@@ -145,7 +145,7 @@ async function JobContent({ jobId }: { jobId: string }) {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {requirements.map((req: string, i) => (
+                  {requirements.map((req: string, i: number) => (
                     <li
                       key={i}
                       className="flex items-start gap-2"
