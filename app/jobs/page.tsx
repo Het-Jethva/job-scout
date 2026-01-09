@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { JobFilters, SyncJobsButton, CompanyLogo } from "./components"
 
+export const runtime = "nodejs"
+
 interface JobsPageProps {
   searchParams: Promise<{
     page?: string

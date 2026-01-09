@@ -20,6 +20,8 @@ import { Markdown } from "@/components/ui/markdown"
 import { MatchButton, ApplyButton } from "./components"
 import { CompanyLogo } from "../components"
 
+export const runtime = "nodejs"
+
 interface JobDetailPageProps {
   params: Promise<{ id: string }>
 }

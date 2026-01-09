@@ -1,10 +1,12 @@
 import { PrismaClient } from "@prisma/client"
 import { PrismaNeon } from "@prisma/adapter-neon"
-import { neonConfig } from "@neondatabase/serverless"
-import ws from "ws"
+import { Pool, neonConfig } from "@neondatabase/serverless"
 
 // Use WebSocket for Neon in Node.js
-neonConfig.webSocketConstructor = ws
+if (typeof WebSocket === "undefined") {
+  const ws = require("ws")
+  neonConfig.webSocketConstructor = ws
+}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -19,7 +21,8 @@ function createPrismaClient() {
     )
   }
 
-  const adapter = new PrismaNeon({ connectionString })
+  const pool = new Pool({ connectionString })
+  const adapter = new PrismaNeon(pool as any)
 
   return new PrismaClient({
     adapter,

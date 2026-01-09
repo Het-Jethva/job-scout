@@ -12,6 +12,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProfileForm, PreferencesForm, DangerZone } from "./components"
 
+export const runtime = "nodejs"
+
 export default async function SettingsPage() {
   const session = await auth.api.getSession({
     headers: await headers(),

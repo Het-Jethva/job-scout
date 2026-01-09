@@ -15,6 +15,8 @@ import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { BatchMatchButton } from "./components"
 
+export const runtime = "nodejs"
+
 async function MatchesContent() {
   const activeResume = await getActiveResume()
 
