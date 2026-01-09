@@ -7,14 +7,6 @@ export interface ParsedDocument {
 }
 
 async function getPdfParser() {
-  // pdf-parse depends on a DOMMatrix implementation; polyfill it for Node runtimes
-  if (typeof globalThis.DOMMatrix === "undefined") {
-    const { DOMMatrix } = await import("dommatrix")
-    ;(
-      globalThis as typeof globalThis & { DOMMatrix: typeof DOMMatrix }
-    ).DOMMatrix = DOMMatrix
-  }
-
   const { PDFParse } = await import("pdf-parse")
   return PDFParse
 }
