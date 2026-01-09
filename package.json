@@ -34,7 +34,6 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "docx": "^9.5.1",
-    "dommatrix": "^0.1.1",
     "katex": "^0.16.27",
     "lucide-react": "^0.562.0",
     "mammoth": "^1.11.0",
