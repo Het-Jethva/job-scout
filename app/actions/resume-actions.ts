@@ -40,11 +40,24 @@ export async function processResumeUpload(
 
     const parsedUrl = new URL(fileUrl)
     const allowedHosts = new Set(["utfs.io", "uploadthing.com"])
+    const allowedHostSuffixes = [
+      "uploadthing-prod.s3.amazonaws.com",
+      "uploadthing-prod.s3.us-west-2.amazonaws.com",
+    ]
 
-    if (
-      parsedUrl.protocol !== "https:" ||
-      !allowedHosts.has(parsedUrl.hostname)
-    ) {
+    const isAllowedHost =
+      parsedUrl.protocol === "https:" &&
+      (allowedHosts.has(parsedUrl.hostname) ||
+        parsedUrl.hostname.endsWith(".utfs.io") ||
+        allowedHostSuffixes.some(
+          (suffix) =>
+            parsedUrl.hostname === suffix ||
+            parsedUrl.hostname.endsWith(`.${suffix}`)
+        ) ||
+        (parsedUrl.hostname.endsWith(".s3.amazonaws.com") &&
+          parsedUrl.pathname.toLowerCase().includes("uploadthing")))
+
+    if (!isAllowedHost) {
       return { success: false, error: "Invalid resume file location" }
     }
 
