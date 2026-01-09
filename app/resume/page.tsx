@@ -13,8 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Markdown } from "@/components/ui/markdown"
 import { ResumeUploader, ResumeList, ResumePageSkeleton } from "./components"
 
-export const runtime = "nodejs"
-
 async function ResumeContent() {
   await requireAuth()
 

@@ -8,8 +8,6 @@ import {
   RecentJobsCard,
 } from "./components"
 
-export const runtime = "nodejs"
-
 async function getDashboardData(userId: string) {
   const [resume, matches, recentJobs] = await Promise.all([
     db.resume.findFirst({

@@ -19,8 +19,6 @@ import { Separator } from "@/components/ui/separator"
 import { Markdown } from "@/components/ui/markdown"
 import { TailorButton, DownloadButton, CopyButton } from "./components"
 
-export const runtime = "nodejs"
-
 interface TailorPageProps {
   params: Promise<{ jobId: string }>
 }
