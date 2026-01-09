@@ -46,7 +46,8 @@ function parseEnv(): Env {
   const result = envSchema.safeParse(process.env)
 
   if (!result.success) {
-    const formatted = result.error.errors
+    // ZodError exposes validation issues under the `issues` array
+    const formatted = result.error.issues
       .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
       .join("\n")
 
