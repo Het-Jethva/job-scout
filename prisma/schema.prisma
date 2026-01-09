@@ -1,0 +1,221 @@
+// JobScout - AI-Powered Job Discovery & Resume Optimization Platform
+// Database: Neon PostgreSQL with pgvector extension
+
+generator client {
+  provider        = "prisma-client-js"
+  engineType      = "library"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  sessions       Session[]
+  accounts       Account[]
+  resumes        Resume[]
+  matches        Match[]
+  userSkills     UserSkill[]
+  userPreferences UserPreference?
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  accountId         String
+  providerId        String
+  accessToken       String?
+  refreshToken      String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope             String?
+  idToken           String?
+  password          String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+model UserSkill {
+  id        String   @id @default(cuid())
+  userId    String
+  skill     String
+  level     String?  // beginner, intermediate, advanced, expert
+  yearsExp  Int?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skill])
+  @@index([userId])
+}
+
+model UserPreference {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  preferredJobTypes String[] // full-time, part-time, contract, remote
+  preferredLocations String[]
+  salaryMin        Int?
+  salaryMax        Int?
+  remoteOnly       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// RESUME MANAGEMENT
+// ============================================
+
+model Resume {
+  id              String   @id @default(cuid())
+  userId          String
+  fileName        String
+  fileUrl         String
+  fileType        String   // pdf, docx, txt
+  fileSize        Int
+  rawText         String   @db.Text
+  parsedData      Json?    // Structured extracted data
+  skills          String[]
+  experience      Json?    // Array of work experiences
+  education       Json?    // Array of education entries
+  embedding       Unsupported("vector(768)")?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matches         Match[]
+  tailoredResumes TailoredResume[]
+
+  @@index([userId])
+}
+
+// ============================================
+// JOB LISTINGS
+// ============================================
+
+model Job {
+  id              String   @id @default(cuid())
+  externalId      String   
+  source          String   // themuse, remotive, remoteok
+  title           String
+  company         String
+  companyLogo     String?
+  location        String
+  jobType         String?  // full-time, part-time, contract
+  isRemote        Boolean  @default(false)
+  salary          String?
+  salaryMin       Int?
+  salaryMax       Int?
+  description     String   @db.Text
+  requirements    String[] // Extracted requirements
+  skills          String[] // Extracted skills
+  categories      String[]
+  applyUrl        String
+  embedding       Unsupported("vector(768)")?
+  publishedAt     DateTime
+  fetchedAt       DateTime @default(now())
+  isActive        Boolean  @default(true)
+
+  matches         Match[]
+  tailoredResumes TailoredResume[]
+
+  @@unique([externalId, source])
+  @@index([source])
+  @@index([isActive])
+  @@index([publishedAt])
+}
+
+// ============================================
+// MATCHING & ANALYSIS
+// ============================================
+
+model Match {
+  id              String   @id @default(cuid())
+  userId          String
+  resumeId        String
+  jobId           String
+  score           Float    // 0-100 match percentage
+  similarityScore Float    // Raw semantic similarity
+  skillMatches    Json     // { matched: [], partial: [], missing: [] }
+  skillGaps       String[]
+  suggestions     String?  @db.Text
+  explanation     String?  @db.Text // Human-readable match explanation
+  createdAt       DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([resumeId, jobId])
+  @@index([userId])
+  @@index([score])
+}
+
+// ============================================
+// TAILORED RESUMES
+// ============================================
+
+model TailoredResume {
+  id              String   @id @default(cuid())
+  resumeId        String
+  jobId           String
+  optimizedText   String   @db.Text
+  changes         Json     // List of modifications made
+  keywords        String[] // Keywords optimized for
+  atsScore        Int?     // ATS compatibility score 0-100
+  fileUrl         String?  // Generated PDF/DOCX URL
+  createdAt       DateTime @default(now())
+
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([resumeId, jobId])
+  @@index([resumeId])
+}
