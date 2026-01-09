@@ -20,6 +20,8 @@ export async function syncJobs(options?: {
   search?: string
 }) {
   try {
+    await requireAuth()
+
     const jobs = await fetchAllJobs(options)
 
     let added = 0
@@ -97,11 +99,15 @@ export async function syncJobs(options?: {
  */
 export async function generateJobEmbeddings(limit = 10) {
   try {
+    await requireAuth()
+
+    const safeLimit = Math.max(1, Math.min(Math.floor(limit), 200))
+
     // Find jobs without embeddings
     const jobs = await db.$queryRaw<Array<{ id: string; description: string }>>`
       SELECT id, description FROM "Job"
       WHERE embedding IS NULL AND "isActive" = true
-      LIMIT ${limit}
+      LIMIT ${safeLimit}
     `
 
     let processed = 0
@@ -110,9 +116,12 @@ export async function generateJobEmbeddings(limit = 10) {
       try {
         const embedding = await generateEmbedding(job.description)
 
+        // pgvector expects a bracketed literal, not a Postgres array
+        const embeddingLiteral = `[${embedding.join(",")}]`
+
         await db.$executeRaw`
           UPDATE "Job"
-          SET embedding = ${embedding}::vector
+          SET embedding = ${embeddingLiteral}::vector
           WHERE id = ${job.id}
         `
 

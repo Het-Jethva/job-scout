@@ -38,14 +38,33 @@ export async function processResumeUpload(
     const session = await requireAuth()
     const userId = session.user.id
 
-    // Fetch the file content
-    const response = await fetch(fileUrl)
+    const parsedUrl = new URL(fileUrl)
+    const allowedHosts = new Set(["utfs.io", "uploadthing.com"])
+
+    if (
+      parsedUrl.protocol !== "https:" ||
+      !allowedHosts.has(parsedUrl.hostname)
+    ) {
+      return { success: false, error: "Invalid resume file location" }
+    }
+
+    // Fetch the file content from trusted upload host only
+    const response = await fetch(parsedUrl, { cache: "no-store" })
     if (!response.ok) {
       throw new Error("Failed to fetch uploaded file")
     }
 
+    const declaredSize = response.headers.get("content-length")
+    if (declaredSize && Math.abs(Number(declaredSize) - fileSize) > 1024) {
+      return { success: false, error: "Resume size mismatch" }
+    }
+
     const arrayBuffer = await response.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
+
+    if (Math.abs(buffer.length - fileSize) > 1024) {
+      return { success: false, error: "Resume size mismatch" }
+    }
 
     // Parse document
     const parsed = await parseDocument(buffer, fileType)

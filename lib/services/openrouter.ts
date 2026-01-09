@@ -3,17 +3,10 @@
  * Uses OpenRouter API with free models for AI features
  */
 
+import { env } from "../env"
+
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 const MODEL = "openai/gpt-oss-120b" // Free model
-
-// Get API key from environment
-function getApiKey(): string {
-  const key = process.env.OPENROUTER_API_KEY
-  if (!key) {
-    throw new Error("OPENROUTER_API_KEY is not set")
-  }
-  return key
-}
 
 interface OpenRouterMessage {
   role: "system" | "user" | "assistant"
@@ -35,15 +28,14 @@ async function callOpenRouter(
   messages: OpenRouterMessage[],
   jsonMode: boolean = false
 ): Promise<string> {
-  const apiKey = getApiKey()
+  const apiKey = env.OPENROUTER_API_KEY
 
   const response = await fetch(OPENROUTER_API_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer":
-        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+      "HTTP-Referer": env.NEXT_PUBLIC_APP_URL,
       "X-Title": "Job Scout",
     },
     body: JSON.stringify({

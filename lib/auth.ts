@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth"
 import { prismaAdapter } from "better-auth/adapters/prisma"
 import { db } from "./db"
-import { isOAuthConfigured } from "./env"
+import { env, isOAuthConfigured } from "./env"
 
 // Check if OAuth providers are properly configured (not placeholder values)
 const googleConfigured = isOAuthConfigured("google")
@@ -19,14 +19,14 @@ export const auth = betterAuth({
   socialProviders: {
     ...(googleConfigured && {
       google: {
-        clientId: process.env.GOOGLE_CLIENT_ID!,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        clientId: env.GOOGLE_CLIENT_ID!,
+        clientSecret: env.GOOGLE_CLIENT_SECRET!,
       },
     }),
     ...(githubConfigured && {
       github: {
-        clientId: process.env.GITHUB_CLIENT_ID!,
-        clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+        clientId: env.GITHUB_CLIENT_ID!,
+        clientSecret: env.GITHUB_CLIENT_SECRET!,
       },
     }),
   },
@@ -42,7 +42,7 @@ export const auth = betterAuth({
     window: 60, // 1 minute
     max: 10, // 10 requests per minute for auth endpoints
   },
-  trustedOrigins: [process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"],
+  trustedOrigins: [env.NEXT_PUBLIC_APP_URL],
 })
 
 export type Session = typeof auth.$Infer.Session
