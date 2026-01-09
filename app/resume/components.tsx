@@ -49,13 +49,20 @@ export function ResumeUploader({ onUploadComplete }: ResumeUploaderProps) {
       }
 
       const uploadedFile = res[0]
+      const fileUrl = uploadedFile.ufsUrl || uploadedFile.url
+
+      if (!fileUrl) {
+        toast.error("Upload succeeded but no file URL was returned.")
+        setUploadProgress(0)
+        return
+      }
       setProcessing(true)
 
       try {
         toast.info("Processing your resume with AI...")
 
         const result = await processResumeUpload(
-          uploadedFile.ufsUrl,
+          fileUrl,
           uploadedFile.name,
           uploadedFile.type,
           uploadedFile.size

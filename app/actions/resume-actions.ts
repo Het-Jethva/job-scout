@@ -49,6 +49,7 @@ export async function processResumeUpload(
       parsedUrl.protocol === "https:" &&
       (allowedHosts.has(parsedUrl.hostname) ||
         parsedUrl.hostname.endsWith(".utfs.io") ||
+        parsedUrl.hostname.includes("uploadthing") ||
         allowedHostSuffixes.some(
           (suffix) =>
             parsedUrl.hostname === suffix ||
