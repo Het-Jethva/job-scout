@@ -1,5 +1,4 @@
 import mammoth from "mammoth"
-import { PDFParse } from "pdf-parse"
 
 export interface ParsedDocument {
   text: string
@@ -7,11 +6,25 @@ export interface ParsedDocument {
   metadata?: Record<string, unknown>
 }
 
+async function getPdfParser() {
+  // pdf-parse depends on a DOMMatrix implementation; polyfill it for Node runtimes
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    const { DOMMatrix } = await import("dommatrix")
+    ;(
+      globalThis as typeof globalThis & { DOMMatrix: typeof DOMMatrix }
+    ).DOMMatrix = DOMMatrix
+  }
+
+  const { PDFParse } = await import("pdf-parse")
+  return PDFParse
+}
+
 /**
  * Parse PDF document and extract text
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
   try {
+    const PDFParse = await getPdfParser()
     // pdf-parse v2.x uses a class-based API
     const parser = new PDFParse({ data: buffer })
     const textResult = await parser.getText()
