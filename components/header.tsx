@@ -106,7 +106,7 @@ export function Header() {
         <div className="ml-auto flex items-center space-x-4">
           <ThemeToggle />
           <AnimatePresence mode="wait">
-            {session ? (
+            {session?.user ? (
               <motion.div
                 key="user-menu"
                 initial={{ opacity: 0, scale: 0.9 }}
