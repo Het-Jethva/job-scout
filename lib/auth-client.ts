@@ -50,29 +50,6 @@ export async function signUpWithEmail(
 }
 
 /**
- * Sign in with OAuth provider
- */
-export async function signInWithOAuth(
-  provider: "google" | "github",
-  redirectTo?: string
-) {
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider,
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback${
-        redirectTo ? `?next=${encodeURIComponent(redirectTo)}` : ""
-      }`,
-    },
-  })
-
-  if (error) {
-    return { error: { message: error.message } }
-  }
-
-  return { data, error: null }
-}
-
-/**
  * Sign out
  */
 export async function signOut() {
@@ -142,15 +119,6 @@ export function useSession() {
 export const signIn = {
   email: async ({ email, password }: { email: string; password: string }) => {
     return signInWithEmail(email, password)
-  },
-  social: async ({
-    provider,
-    callbackURL,
-  }: {
-    provider: "google" | "github"
-    callbackURL?: string
-  }) => {
-    return signInWithOAuth(provider, callbackURL)
   },
 }
 

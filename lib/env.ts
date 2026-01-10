@@ -28,12 +28,6 @@ const envSchema = z.object({
     .string()
     .url("NEXT_PUBLIC_APP_URL must be a valid URL"),
 
-  // Optional OAuth providers (configured in Supabase Dashboard)
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GITHUB_CLIENT_ID: z.string().optional(),
-  GITHUB_CLIENT_SECRET: z.string().optional(),
-
   // Optional Job API keys
   THEMUSE_API_KEY: z.string().optional(),
 
@@ -62,25 +56,3 @@ function parseEnv(): Env {
 
 // Parse once at module load so any missing values fail immediately.
 export const env = parseEnv()
-
-/**
- * Check if OAuth provider is properly configured in Supabase
- * Note: OAuth is now configured in Supabase Dashboard, these env vars are optional
- */
-export function isOAuthConfigured(provider: "google" | "github"): boolean {
-  if (provider === "google") {
-    return !!(
-      env.GOOGLE_CLIENT_ID &&
-      env.GOOGLE_CLIENT_SECRET &&
-      env.GOOGLE_CLIENT_SECRET !== "your-google-client-secret"
-    )
-  }
-  if (provider === "github") {
-    return !!(
-      env.GITHUB_CLIENT_ID &&
-      env.GITHUB_CLIENT_SECRET &&
-      env.GITHUB_CLIENT_SECRET !== "your-github-client-secret"
-    )
-  }
-  return false
-}
