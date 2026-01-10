@@ -1,4 +1,3 @@
-
 import mammoth from "mammoth"
 import { createRequire } from "module"
 
@@ -8,48 +7,167 @@ export interface ParsedDocument {
   metadata?: Record<string, unknown>
 }
 
+// Initialize DOMMatrix polyfill once at module load time
+// This ensures it's available before pdf-parse is loaded
+let dommatrixPolyfillInitialized = false
+
+async function initializeDOMMatrixPolyfill() {
+  if (dommatrixPolyfillInitialized) {
+    return
+  }
+
+  // Only polyfill in Node.js environment (server-side)
+  if (typeof window === "undefined" && typeof globalThis.DOMMatrix === "undefined") {
+    try {
+      const dommatrix = await import("node-dommatrix")
+      if (dommatrix.DOMMatrix) {
+        globalThis.DOMMatrix = dommatrix.DOMMatrix as any
+      }
+      if (dommatrix.DOMMatrixReadOnly) {
+        globalThis.DOMMatrixReadOnly = dommatrix.DOMMatrixReadOnly as any
+      }
+      dommatrixPolyfillInitialized = true
+    } catch (error) {
+      console.warn("Failed to initialize DOMMatrix polyfill:", error)
+      // Don't throw - some environments might have it already
+    }
+  } else {
+    dommatrixPolyfillInitialized = true
+  }
+}
+
 /**
  * Parse PDF document and extract text
+ * Production-ready implementation with comprehensive error handling
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
+  // Validate input
+  if (!buffer || !Buffer.isBuffer(buffer)) {
+    throw new Error("Invalid buffer provided for PDF parsing")
+  }
+
+  if (buffer.length === 0) {
+    throw new Error("Empty buffer provided for PDF parsing")
+  }
+
+  // Initialize polyfill before loading pdf-parse
+  await initializeDOMMatrixPolyfill()
+
+  let parser: any = null
+
   try {
-    // Use createRequire to load pdf-parse CommonJS module in ES module context
-    // The package.json exports field should automatically resolve to the correct Node.js build
-    // when using require() in a server context
+    // Load pdf-parse module
     const require = createRequire(import.meta.url)
     const pdfParseModule = require("pdf-parse")
-    const { PDFParse } = pdfParseModule
 
-    if (!PDFParse) {
-      throw new Error("PDFParse class not found in pdf-parse module")
+    if (!pdfParseModule || typeof pdfParseModule.PDFParse !== "function") {
+      const availableExports = pdfParseModule ? Object.keys(pdfParseModule) : []
+      throw new Error(
+        `PDFParse class not found. Available exports: ${availableExports.join(", ")}`
+      )
     }
 
-    // pdf-parse v2 uses a class-based API
-    // Create an instance with the buffer using 'data' parameter (not 'buffer')
-    const parser = new PDFParse({ data: buffer })
+    const PDFParse = pdfParseModule.PDFParse
 
-    // Extract text using the getText method
-    const result = await parser.getText()
+    // Create parser instance
+    parser = new PDFParse({ data: buffer })
 
-    // Get document info/metadata
-    const info = await parser.getInfo()
-
-    // Extract and return the parsed data
-    const parsedData = {
-      text: cleanText(result.text || ""),
-      pageCount: result.total || info?.total || undefined,
-      metadata: (info?.info || {}) as Record<string, unknown>,
+    if (!parser) {
+      throw new Error("Failed to create PDF parser instance")
     }
 
-    // Always destroy the parser to free memory
-    await parser.destroy()
+    // Extract text - handle different possible return structures
+    const textResult = await parser.getText()
+    
+    // Validate and extract text
+    let extractedText = ""
+    let pageCount: number | undefined = undefined
 
-    return parsedData
+    // Handle different possible return structures from getText()
+    if (typeof textResult === "string") {
+      extractedText = textResult
+    } else if (textResult && typeof textResult === "object") {
+      // Check for various possible properties
+      if (typeof textResult.text === "string") {
+        extractedText = textResult.text
+      } else if (Array.isArray(textResult.pages)) {
+        // If it returns pages array, join them
+        extractedText = textResult.pages
+          .map((page: any) => {
+            if (typeof page === "string") return page
+            if (page && typeof page.text === "string") return page.text
+            return ""
+          })
+          .filter((text: string) => text.length > 0)
+          .join("\n")
+      } else if (textResult.toString && typeof textResult.toString === "function") {
+        extractedText = String(textResult)
+      } else {
+        // Try to stringify the object as fallback
+        extractedText = JSON.stringify(textResult)
+      }
+
+      // Extract page count if available
+      if (typeof textResult.total === "number") {
+        pageCount = textResult.total
+      } else if (typeof textResult.pageCount === "number") {
+        pageCount = textResult.pageCount
+      } else if (Array.isArray(textResult.pages)) {
+        pageCount = textResult.pages.length
+      }
+    } else if (textResult != null) {
+      extractedText = String(textResult)
+    }
+
+    // If we still don't have text, try getInfo() to get metadata
+    let metadata: Record<string, unknown> = {}
+    try {
+      const info = await parser.getInfo()
+      if (info && typeof info === "object") {
+        metadata = info.info || info.metadata || info
+        // Extract page count from info if not already found
+        if (pageCount === undefined) {
+          if (typeof info.total === "number") {
+            pageCount = info.total
+          } else if (typeof info.pageCount === "number") {
+            pageCount = info.pageCount
+          }
+        }
+      }
+    } catch (infoError) {
+      // Info extraction is optional, continue without it
+      console.warn("Failed to extract PDF metadata:", infoError)
+    }
+
+    // Validate that we extracted some text
+    if (!extractedText || extractedText.trim().length === 0) {
+      throw new Error("No text could be extracted from the PDF document")
+    }
+
+    // Clean and return the parsed data
+    return {
+      text: cleanText(extractedText),
+      pageCount,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    }
   } catch (error) {
-    console.error("PDF parsing error:", error)
-    throw new Error(
-      `Failed to parse PDF document: ${error instanceof Error ? error.message : String(error)}`
-    )
+    const errorMessage =
+      error instanceof Error ? error.message : String(error)
+    console.error("PDF parsing error:", {
+      message: errorMessage,
+      bufferLength: buffer?.length,
+      error,
+    })
+    throw new Error(`Failed to parse PDF document: ${errorMessage}`)
+  } finally {
+    // Always cleanup parser to free memory
+    if (parser && typeof parser.destroy === "function") {
+      try {
+        await parser.destroy()
+      } catch (destroyError) {
+        console.warn("Error destroying PDF parser:", destroyError)
+      }
+    }
   }
 }
 
@@ -57,14 +175,28 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
  * Parse DOCX document and extract text
  */
 export async function parseDocx(buffer: Buffer): Promise<ParsedDocument> {
+  if (!buffer || !Buffer.isBuffer(buffer)) {
+    throw new Error("Invalid buffer provided for DOCX parsing")
+  }
+
   try {
     const result = await mammoth.extractRawText({ buffer })
+    
+    if (!result || !result.value) {
+      throw new Error("No text extracted from DOCX document")
+    }
+
     return {
       text: cleanText(result.value),
-      metadata: { messages: result.messages },
+      metadata: result.messages && result.messages.length > 0 
+        ? { messages: result.messages } 
+        : undefined,
     }
-  } catch (_error) {
-    throw new Error("Failed to parse DOCX document")
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error)
+    console.error("DOCX parsing error:", errorMessage)
+    throw new Error(`Failed to parse DOCX document: ${errorMessage}`)
   }
 }
 
@@ -72,13 +204,25 @@ export async function parseDocx(buffer: Buffer): Promise<ParsedDocument> {
  * Parse plain text document
  */
 export async function parseTxt(buffer: Buffer): Promise<ParsedDocument> {
+  if (!buffer || !Buffer.isBuffer(buffer)) {
+    throw new Error("Invalid buffer provided for text parsing")
+  }
+
   try {
     const text = buffer.toString("utf-8")
+    
+    if (!text || text.trim().length === 0) {
+      throw new Error("Empty text document")
+    }
+
     return {
       text: cleanText(text),
     }
-  } catch (_error) {
-    throw new Error("Failed to parse text document")
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error)
+    console.error("Text parsing error:", errorMessage)
+    throw new Error(`Failed to parse text document: ${errorMessage}`)
   }
 }
 
@@ -89,31 +233,53 @@ export async function parseDocument(
   buffer: Buffer,
   fileType: string
 ): Promise<ParsedDocument> {
-  const mimeType = fileType.toLowerCase()
-
-  if (mimeType === "application/pdf" || mimeType.endsWith(".pdf")) {
-    return parsePdf(buffer)
+  if (!buffer || !Buffer.isBuffer(buffer)) {
+    throw new Error("Invalid buffer provided")
   }
 
-  if (
-    mimeType ===
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    mimeType.endsWith(".docx")
-  ) {
-    return parseDocx(buffer)
+  if (!fileType || typeof fileType !== "string") {
+    throw new Error("Invalid file type provided")
   }
 
-  if (mimeType === "text/plain" || mimeType.endsWith(".txt")) {
-    return parseTxt(buffer)
-  }
+  const mimeType = fileType.toLowerCase().trim()
 
-  throw new Error(`Unsupported file type: ${fileType}`)
+  try {
+    if (mimeType === "application/pdf" || mimeType.endsWith(".pdf")) {
+      return await parsePdf(buffer)
+    }
+
+    if (
+      mimeType ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      mimeType.endsWith(".docx")
+    ) {
+      return await parseDocx(buffer)
+    }
+
+    if (mimeType === "text/plain" || mimeType.endsWith(".txt")) {
+      return await parseTxt(buffer)
+    }
+
+    throw new Error(`Unsupported file type: ${fileType}`)
+  } catch (error) {
+    // Re-throw with context if it's not already our error
+    if (error instanceof Error && error.message.includes("Failed to parse")) {
+      throw error
+    }
+    const errorMessage =
+      error instanceof Error ? error.message : String(error)
+    throw new Error(`Document parsing failed: ${errorMessage}`)
+  }
 }
 
 /**
  * Clean and normalize extracted text
  */
 function cleanText(text: string): string {
+  if (!text || typeof text !== "string") {
+    return ""
+  }
+
   return (
     text
       // Remove excessive whitespace
@@ -137,6 +303,10 @@ function cleanText(text: string): string {
  * Extract sections from resume text
  */
 export function extractSections(text: string): Record<string, string> {
+  if (!text || typeof text !== "string") {
+    return {}
+  }
+
   const sections: Record<string, string> = {}
 
   // Common resume section headers
