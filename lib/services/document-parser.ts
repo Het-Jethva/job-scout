@@ -20,11 +20,8 @@ async function initializeDOMMatrixPolyfill() {
   if (typeof window === "undefined" && typeof globalThis.DOMMatrix === "undefined") {
     try {
       const dommatrix = await import("node-dommatrix")
-      if (dommatrix.DOMMatrix) {
+      if (dommatrix && dommatrix.DOMMatrix) {
         globalThis.DOMMatrix = dommatrix.DOMMatrix as any
-      }
-      if (dommatrix.DOMMatrixReadOnly) {
-        globalThis.DOMMatrixReadOnly = dommatrix.DOMMatrixReadOnly as any
       }
       dommatrixPolyfillInitialized = true
     } catch (error) {
