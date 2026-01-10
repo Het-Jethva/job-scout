@@ -37,14 +37,17 @@ export function BatchMatchButton() {
         // result is an array of match results
         const successCount = result.filter((r) => r.success).length
         toast.success(`Calculated ${successCount} matches!`)
-        router.refresh()
-      } catch {
-        toast.error("Failed to calculate matches")
-      } finally {
+
+        // Refresh the page after a short delay to show success state
         setTimeout(() => {
+          router.refresh()
           setProgress(0)
           setShowSuccess(false)
-        }, 2000)
+        }, 1500)
+      } catch {
+        toast.error("Failed to calculate matches")
+        setProgress(0)
+        setShowSuccess(false)
       }
     })
   }

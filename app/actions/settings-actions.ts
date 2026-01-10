@@ -1,8 +1,7 @@
 "use server"
 
-import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
-import { auth } from "@/lib/auth"
+import { requireAuth } from "@/lib/auth-utils"
 import { db } from "@/lib/db"
 
 /**
@@ -10,13 +9,7 @@ import { db } from "@/lib/db"
  */
 export async function updateProfile(data: { name: string }) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    })
-
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const session = await requireAuth()
 
     await db.user.update({
       where: { id: session.user.id },
@@ -43,13 +36,7 @@ export async function updatePreferences(data: {
   remoteOnly: boolean
 }) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    })
-
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const session = await requireAuth()
 
     await db.userPreference.upsert({
       where: { userId: session.user.id },
@@ -85,13 +72,7 @@ export async function updatePreferences(data: {
  */
 export async function deleteAccount() {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    })
-
-    if (!session?.user) {
-      return { success: false, error: "Unauthorized" }
-    }
+    const session = await requireAuth()
 
     // Delete user (cascade will handle related records)
     await db.user.delete({

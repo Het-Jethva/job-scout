@@ -8,8 +8,9 @@ import { motion, AnimatePresence } from "motion/react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useUploadThing } from "@/lib/uploadthing"
+import { uploadResumeClient } from "@/lib/supabase/storage-client"
 import { processResumeUpload } from "@/app/actions/resume-actions"
+import { useSession } from "@/lib/auth-client"
 import {
   FadeIn,
   StaggerContainer,
@@ -34,68 +35,21 @@ interface ResumeUploaderProps {
 
 export function ResumeUploader({ onUploadComplete }: ResumeUploaderProps) {
   const router = useRouter()
+  const { data: session } = useSession()
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [isUploading, setIsUploading] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [success, setSuccess] = useState(false)
-
-  const { startUpload, isUploading } = useUploadThing("resumeUploader", {
-    onUploadProgress: (progress) => {
-      setUploadProgress(progress)
-    },
-    onClientUploadComplete: async (res) => {
-      if (!res || res.length === 0) {
-        toast.error("Upload failed - no response received")
-        return
-      }
-
-      const uploadedFile = res[0]
-      const fileUrl = uploadedFile.ufsUrl || uploadedFile.url
-
-      if (!fileUrl) {
-        toast.error("Upload succeeded but no file URL was returned.")
-        setUploadProgress(0)
-        return
-      }
-      setProcessing(true)
-
-      try {
-        toast.info("Processing your resume with AI...")
-
-        const result = await processResumeUpload(
-          fileUrl,
-          uploadedFile.name,
-          uploadedFile.type,
-          uploadedFile.size
-        )
-
-        if (result.success) {
-          setSuccess(true)
-          toast.success("Resume uploaded and processed successfully!")
-          setTimeout(() => {
-            router.refresh()
-            onUploadComplete?.()
-            setSuccess(false)
-          }, 1500)
-        } else {
-          toast.error(result.error || "Failed to process resume")
-        }
-      } catch (_error) {
-        toast.error("Failed to process resume. Please try again.")
-      } finally {
-        setProcessing(false)
-        setUploadProgress(0)
-      }
-    },
-    onUploadError: (error) => {
-      toast.error(error.message || "Failed to upload resume. Please try again.")
-      setUploadProgress(0)
-    },
-  })
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       const file = acceptedFiles[0]
       if (!file) return
+
+      if (!session?.user?.id) {
+        toast.error("Please sign in to upload a resume")
+        return
+      }
 
       // Validate file type
       const validTypes = [
@@ -114,9 +68,53 @@ export function ResumeUploader({ onUploadComplete }: ResumeUploaderProps) {
         return
       }
 
-      await startUpload([file])
+      setIsUploading(true)
+      setUploadProgress(20)
+
+      try {
+        // Upload to Supabase Storage
+        const uploadResult = await uploadResumeClient(session.user.id, file)
+
+        if ("error" in uploadResult) {
+          toast.error(uploadResult.error)
+          setIsUploading(false)
+          setUploadProgress(0)
+          return
+        }
+
+        setUploadProgress(60)
+        setIsUploading(false)
+        setProcessing(true)
+
+        toast.info("Processing your resume with AI...")
+
+        const result = await processResumeUpload(
+          uploadResult.url,
+          file.name,
+          file.type,
+          file.size
+        )
+
+        if (result.success) {
+          setSuccess(true)
+          toast.success("Resume uploaded and processed successfully!")
+          setTimeout(() => {
+            router.refresh()
+            onUploadComplete?.()
+            setSuccess(false)
+          }, 1500)
+        } else {
+          toast.error(result.error || "Failed to process resume")
+        }
+      } catch (_error) {
+        toast.error("Failed to upload resume. Please try again.")
+      } finally {
+        setProcessing(false)
+        setUploadProgress(0)
+        setIsUploading(false)
+      }
     },
-    [startUpload]
+    [session, router, onUploadComplete]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

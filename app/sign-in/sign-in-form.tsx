@@ -40,15 +40,15 @@ export function SignInForm() {
     github: false,
   })
 
-  // Fetch OAuth configuration on mount
+  // Check OAuth configuration - in Supabase these are configured in the dashboard
+  // For now, we'll assume both are available if the env vars are set
   useEffect(() => {
-    fetch("/api/auth/oauth-config")
-      .then((res) => res.json())
-      .then((data) => setOauthConfig(data))
-      .catch(() => {
-        // If fetch fails, assume OAuth is not configured
-        setOauthConfig({ google: false, github: false })
-      })
+    // OAuth providers are configured in Supabase Dashboard
+    // We can enable them based on environment or always show them
+    setOauthConfig({
+      google: true, // Enable if configured in Supabase
+      github: true, // Enable if configured in Supabase
+    })
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {

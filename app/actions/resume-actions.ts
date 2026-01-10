@@ -39,26 +39,14 @@ export async function processResumeUpload(
     const userId = session.user.id
 
     const parsedUrl = new URL(fileUrl)
-    const allowedHosts = new Set(["utfs.io", "uploadthing.com"])
-    const allowedHostSuffixes = [
-      "uploadthing-prod.s3.amazonaws.com",
-      "uploadthing-prod.s3.us-west-2.amazonaws.com",
-    ]
 
-    const isAllowedHost =
-      parsedUrl.protocol === "https:" &&
-      (allowedHosts.has(parsedUrl.hostname) ||
-        parsedUrl.hostname.endsWith(".utfs.io") ||
-        parsedUrl.hostname.includes("uploadthing") ||
-        allowedHostSuffixes.some(
-          (suffix) =>
-            parsedUrl.hostname === suffix ||
-            parsedUrl.hostname.endsWith(`.${suffix}`)
-        ) ||
-        (parsedUrl.hostname.endsWith(".s3.amazonaws.com") &&
-          parsedUrl.pathname.toLowerCase().includes("uploadthing")))
+    // Allow Supabase Storage URLs and legacy UploadThing URLs
+    const isSupabaseStorage = parsedUrl.hostname.includes("supabase")
+    const isUploadThing =
+      parsedUrl.hostname.endsWith(".utfs.io") ||
+      parsedUrl.hostname.includes("uploadthing")
 
-    if (!isAllowedHost) {
+    if (!isSupabaseStorage && !isUploadThing) {
       return { success: false, error: "Invalid resume file location" }
     }
 

@@ -5,27 +5,30 @@ import { z } from "zod"
  * Fails fast during boot so production doesn’t start with bad config.
  */
 const envSchema = z.object({
-  // Database
-  DATABASE_URL: z.string().url("DATABASE_URL must be a valid URL"),
+  // Database (Supabase PostgreSQL)
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DIRECT_URL: z.string().optional(),
+
+  // Supabase
+  NEXT_PUBLIC_SUPABASE_URL: z
+    .string()
+    .url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL"),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z
+    .string()
+    .min(1, "NEXT_PUBLIC_SUPABASE_ANON_KEY is required"),
+  SUPABASE_SERVICE_ROLE_KEY: z
+    .string()
+    .min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
 
   // AI
   OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
-
-  // File Storage
-  UPLOADTHING_TOKEN: z.string().min(1, "UPLOADTHING_TOKEN is required"),
-
-  // Auth
-  BETTER_AUTH_SECRET: z
-    .string()
-    .min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
-  BETTER_AUTH_URL: z.string().url("BETTER_AUTH_URL must be a valid URL"),
 
   // App
   NEXT_PUBLIC_APP_URL: z
     .string()
     .url("NEXT_PUBLIC_APP_URL must be a valid URL"),
 
-  // Optional OAuth providers
+  // Optional OAuth providers (configured in Supabase Dashboard)
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GITHUB_CLIENT_ID: z.string().optional(),
@@ -61,7 +64,8 @@ function parseEnv(): Env {
 export const env = parseEnv()
 
 /**
- * Check if OAuth provider is properly configured
+ * Check if OAuth provider is properly configured in Supabase
+ * Note: OAuth is now configured in Supabase Dashboard, these env vars are optional
  */
 export function isOAuthConfigured(provider: "google" | "github"): boolean {
   if (provider === "google") {

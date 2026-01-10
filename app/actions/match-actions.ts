@@ -336,33 +336,54 @@ export async function calculateBatchMatches(limit = 10) {
     LIMIT 50
   `
 
-  for (const job of jobsWithoutEmbeddings) {
-    try {
-      const embedding = await generateEmbedding(job.description)
-      const embeddingLiteral = `[${embedding.join(",")}]`
-      await db.$executeRaw`
-        UPDATE "Job"
-        SET embedding = ${embeddingLiteral}::vector
-        WHERE id = ${job.id}
-      `
-    } catch (_error) {
-      // Continue with next job if one fails
-    }
+  // Process embeddings in parallel (batch of 5 at a time to avoid rate limits)
+  const BATCH_SIZE = 5
+  for (let i = 0; i < jobsWithoutEmbeddings.length; i += BATCH_SIZE) {
+    const batch = jobsWithoutEmbeddings.slice(i, i + BATCH_SIZE)
+    await Promise.allSettled(
+      batch.map(async (job) => {
+        try {
+          const embedding = await generateEmbedding(job.description)
+          const embeddingLiteral = `[${embedding.join(",")}]`
+          await db.$executeRaw`
+            UPDATE "Job"
+            SET embedding = ${embeddingLiteral}::vector
+            WHERE id = ${job.id}
+          `
+        } catch (_error) {
+          // Continue with next job if one fails
+        }
+      })
+    )
   }
 
   // Get similar jobs
   const { jobs } = await findSimilarJobs({ limit })
 
+  // Process matches in parallel (batch of 3 at a time to avoid overwhelming the API)
   const results = []
+  const MATCH_BATCH_SIZE = 3
 
-  for (const job of jobs) {
-    const result = await calculateJobMatch(job.id)
-    results.push({
-      jobId: job.id,
-      title: job.title,
-      success: result.success,
-      score: result.success ? result.match?.score : null,
-    })
+  for (let i = 0; i < jobs.length; i += MATCH_BATCH_SIZE) {
+    const batch = jobs.slice(i, i + MATCH_BATCH_SIZE)
+    const batchResults = await Promise.allSettled(
+      batch.map(async (job) => {
+        const result = await calculateJobMatch(job.id)
+        return {
+          jobId: job.id,
+          title: job.title,
+          success: result.success,
+          score: result.success ? result.match?.score : null,
+        }
+      })
+    )
+
+    // Add fulfilled results
+    results.push(
+      ...batchResults
+        .filter((r) => r.status === "fulfilled")
+        .map((r) => (r as PromiseFulfilledResult<any>).value)
+    )
   }
 
   // Revalidate the matches page to ensure it updates

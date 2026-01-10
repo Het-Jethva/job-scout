@@ -1,5 +1,5 @@
 // JobScout - AI-Powered Job Discovery & Resume Optimization Platform
-// Database: Neon PostgreSQL with pgvector extension
+// Database: Supabase PostgreSQL with pgvector extension
 
 generator client {
   provider        = "prisma-client-js"
@@ -15,8 +15,9 @@ datasource db {
 // USER MANAGEMENT
 // ============================================
 
+// User table synced with Supabase auth.users via database trigger
 model User {
-  id            String    @id @default(cuid())
+  id            String    @id @db.Uuid // Maps to auth.users.id
   email         String    @unique
   name          String?
   image         String?
@@ -25,63 +26,15 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   // Relations
-  sessions       Session[]
-  accounts       Account[]
-  resumes        Resume[]
-  matches        Match[]
-  userSkills     UserSkill[]
+  resumes         Resume[]
+  matches         Match[]
+  userSkills      UserSkill[]
   userPreferences UserPreference?
-}
-
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  accountId         String
-  providerId        String
-  accessToken       String?
-  refreshToken      String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope             String?
-  idToken           String?
-  password          String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
-model Verification {
-  id         String   @id @default(cuid())
-  identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([identifier])
 }
 
 model UserSkill {
   id        String   @id @default(cuid())
-  userId    String
+  userId    String   @db.Uuid
   skill     String
   level     String?  // beginner, intermediate, advanced, expert
   yearsExp  Int?
@@ -95,7 +48,7 @@ model UserSkill {
 
 model UserPreference {
   id               String   @id @default(cuid())
-  userId           String   @unique
+  userId           String   @unique @db.Uuid
   preferredJobTypes String[] // full-time, part-time, contract, remote
   preferredLocations String[]
   salaryMin        Int?
@@ -113,7 +66,7 @@ model UserPreference {
 
 model Resume {
   id              String   @id @default(cuid())
-  userId          String
+  userId          String   @db.Uuid
   fileName        String
   fileUrl         String
   fileType        String   // pdf, docx, txt
@@ -177,7 +130,7 @@ model Job {
 
 model Match {
   id              String   @id @default(cuid())
-  userId          String
+  userId          String   @db.Uuid
   resumeId        String
   jobId           String
   score           Float    // 0-100 match percentage
