@@ -41,8 +41,8 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
 
       // Collect text items from the page
       const pageText = textContent.items
-        .filter((item): item is { str: string } => "str" in item)
-        .map((item) => item.str)
+        .filter((item) => "str" in item && typeof (item as any).str === "string")
+        .map((item) => (item as any).str as string)
         .join(" ")
 
       fullText += pageText + "\n"
@@ -92,15 +92,15 @@ export async function parseDocx(buffer: Buffer): Promise<ParsedDocument> {
 
   try {
     const result = await mammoth.extractRawText({ buffer })
-    
+
     if (!result || !result.value) {
       throw new Error("No text extracted from DOCX document")
     }
 
     return {
       text: cleanText(result.value),
-      metadata: result.messages && result.messages.length > 0 
-        ? { messages: result.messages } 
+      metadata: result.messages && result.messages.length > 0
+        ? { messages: result.messages }
         : undefined,
     }
   } catch (error) {
@@ -121,7 +121,7 @@ export async function parseTxt(buffer: Buffer): Promise<ParsedDocument> {
 
   try {
     const text = buffer.toString("utf-8")
-    
+
     if (!text || text.trim().length === 0) {
       throw new Error("Empty text document")
     }
@@ -161,7 +161,7 @@ export async function parseDocument(
 
     if (
       mimeType ===
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
       mimeType.endsWith(".docx")
     ) {
       return await parseDocx(buffer)
