@@ -11,9 +11,11 @@ export interface ParsedDocument {
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
   try {
-    // Dynamic import of pdf-parse - it's a CommonJS module
-    const pdfParseModule = await import("pdf-parse")
-    const pdfParse = (pdfParseModule as any).default || pdfParseModule
+    // pdf-parse uses export = syntax (CommonJS)
+    // We need to dynamically import and handle the module properly
+    const pdfParse = await import("pdf-parse").then(
+      (mod) => (mod as any).default || mod
+    )
 
     // pdf-parse expects a buffer directly
     const data = await pdfParse(buffer)
