@@ -48,23 +48,50 @@ async function callOpenRouter(
   })
 
   if (!response.ok) {
+    let errorMessage = `OpenRouter API error: ${response.status}`
+    try {
+      const errorData = await response.json().catch(() => ({}))
+      if (errorData.error?.message) {
+        errorMessage = errorData.error.message
+      }
+    } catch {
+      // Ignore JSON parse errors for error response
+    }
+
     if (response.status === 429) {
       throw new Error("Rate limit exceeded. Please try again later.")
     }
     if (response.status === 401) {
       throw new Error("Invalid API key. Please check your OPENROUTER_API_KEY.")
     }
-    throw new Error(`OpenRouter API error: ${response.status}`)
+    if (response.status === 400) {
+      throw new Error(`Invalid request: ${errorMessage}`)
+    }
+    throw new Error(errorMessage)
   }
 
   const data = (await response.json()) as OpenRouterResponse
-  return data.choices[0]?.message?.content || ""
+  
+  if (!data.choices || data.choices.length === 0) {
+    throw new Error("No response choices from AI service")
+  }
+  
+  const content = data.choices[0]?.message?.content
+  if (!content) {
+    throw new Error("Empty response content from AI service")
+  }
+  
+  return content
 }
 
 /**
  * Parse JSON from response, handling markdown code blocks
  */
 function parseJsonResponse<T>(text: string): T {
+  if (!text || text.trim().length === 0) {
+    throw new Error("Empty response from AI service")
+  }
+
   // Remove markdown code blocks if present
   let cleaned = text.trim()
   if (cleaned.startsWith("```json")) {
@@ -77,7 +104,18 @@ function parseJsonResponse<T>(text: string): T {
   }
   cleaned = cleaned.trim()
 
-  return JSON.parse(cleaned) as T
+  if (cleaned.length === 0) {
+    throw new Error("No valid JSON content in AI response")
+  }
+
+  try {
+    return JSON.parse(cleaned) as T
+  } catch (parseError) {
+    console.error("JSON parse error. Response text:", cleaned.substring(0, 500))
+    throw new Error(
+      `Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : String(parseError)}`
+    )
+  }
 }
 
 // ============ Interfaces ============
@@ -144,8 +182,23 @@ Respond with valid JSON only.`
     )
 
     return parseJsonResponse<ResumeAnalysis>(response)
-  } catch {
-    throw new Error("Failed to analyze resume with AI")
+  } catch (error) {
+    console.error("Resume analysis error:", error)
+    const errorMessage =
+      error instanceof Error ? error.message : String(error)
+    
+    // Provide more specific error messages
+    if (errorMessage.includes("Rate limit") || errorMessage.includes("429")) {
+      throw new Error("Rate limit exceeded. Please try again later.")
+    }
+    if (errorMessage.includes("API key") || errorMessage.includes("401")) {
+      throw new Error("AI service configuration error. Please contact support.")
+    }
+    if (errorMessage.includes("JSON") || errorMessage.includes("parse")) {
+      throw new Error("Failed to parse AI response. Please try again.")
+    }
+    
+    throw new Error(`Failed to analyze resume with AI: ${errorMessage}`)
   }
 }
 

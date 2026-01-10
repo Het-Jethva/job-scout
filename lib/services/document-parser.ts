@@ -14,29 +14,36 @@ export interface ParsedDocument {
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
   try {
     // Use createRequire to load pdf-parse CommonJS module in ES module context
+    // The package.json exports field should automatically resolve to the correct Node.js build
+    // when using require() in a server context
     const require = createRequire(import.meta.url)
-    const { PDFParse } = require("pdf-parse")
-    
+    const pdfParseModule = require("pdf-parse")
+    const { PDFParse } = pdfParseModule
+
+    if (!PDFParse) {
+      throw new Error("PDFParse class not found in pdf-parse module")
+    }
+
     // pdf-parse v2 uses a class-based API
     // Create an instance with the buffer using 'data' parameter (not 'buffer')
     const parser = new PDFParse({ data: buffer })
-    
+
     // Extract text using the getText method
     const result = await parser.getText()
-    
+
     // Get document info/metadata
     const info = await parser.getInfo()
-    
+
     // Extract and return the parsed data
     const parsedData = {
       text: cleanText(result.text || ""),
       pageCount: result.numPages || info?.total || undefined,
       metadata: (info?.info || {}) as Record<string, unknown>,
     }
-    
+
     // Always destroy the parser to free memory
     await parser.destroy()
-    
+
     return parsedData
   } catch (error) {
     console.error("PDF parsing error:", error)
@@ -90,7 +97,7 @@ export async function parseDocument(
 
   if (
     mimeType ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     mimeType.endsWith(".docx")
   ) {
     return parseDocx(buffer)
