@@ -6,29 +6,24 @@ export interface ParsedDocument {
   metadata?: Record<string, unknown>
 }
 
-async function getPdfParser() {
-  const { PDFParse } = await import("pdf-parse")
-  return PDFParse
-}
-
 /**
  * Parse PDF document and extract text
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
   try {
-    const PDFParse = await getPdfParser()
-    // pdf-parse v2.x uses a class-based API
-    const parser = new PDFParse({ data: buffer })
-    const textResult = await parser.getText()
-    const infoResult = await parser.getInfo()
-    await parser.destroy()
+    // Dynamic import of pdf-parse
+    const pdfParse = (await import("pdf-parse")).default
+
+    // pdf-parse expects { data: buffer }
+    const data = await pdfParse(buffer)
 
     return {
-      text: cleanText(textResult.text),
-      pageCount: textResult.pages.length,
-      metadata: infoResult.info as Record<string, unknown>,
+      text: cleanText(data.text),
+      pageCount: data.numpages,
+      metadata: data.info as Record<string, unknown>,
     }
-  } catch (_error) {
+  } catch (error) {
+    console.error("PDF parsing error:", error)
     throw new Error("Failed to parse PDF document")
   }
 }
