@@ -1,4 +1,6 @@
+
 import mammoth from "mammoth"
+import { createRequire } from "module"
 
 export interface ParsedDocument {
   text: string
@@ -11,23 +13,36 @@ export interface ParsedDocument {
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
   try {
-    // pdf-parse uses export = syntax (CommonJS)
-    // We need to dynamically import and handle the module properly
-    const pdfParse = await import("pdf-parse").then(
-      (mod) => (mod as any).default || mod
-    )
-
-    // pdf-parse expects a buffer directly
-    const data = await pdfParse(buffer)
-
-    return {
-      text: cleanText(data.text),
-      pageCount: data.numpages,
-      metadata: data.info as Record<string, unknown>,
+    // Use createRequire to load pdf-parse CommonJS module in ES module context
+    const require = createRequire(import.meta.url)
+    const { PDFParse } = require("pdf-parse")
+    
+    // pdf-parse v2 uses a class-based API
+    // Create an instance with the buffer using 'data' parameter (not 'buffer')
+    const parser = new PDFParse({ data: buffer })
+    
+    // Extract text using the getText method
+    const result = await parser.getText()
+    
+    // Get document info/metadata
+    const info = await parser.getInfo()
+    
+    // Extract and return the parsed data
+    const parsedData = {
+      text: cleanText(result.text || ""),
+      pageCount: result.numPages || info?.total || undefined,
+      metadata: (info?.info || {}) as Record<string, unknown>,
     }
+    
+    // Always destroy the parser to free memory
+    await parser.destroy()
+    
+    return parsedData
   } catch (error) {
     console.error("PDF parsing error:", error)
-    throw new Error("Failed to parse PDF document")
+    throw new Error(
+      `Failed to parse PDF document: ${error instanceof Error ? error.message : String(error)}`
+    )
   }
 }
 
