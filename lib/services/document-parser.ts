@@ -37,7 +37,7 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
     // Extract and return the parsed data
     const parsedData = {
       text: cleanText(result.text || ""),
-      pageCount: result.numPages || info?.total || undefined,
+      pageCount: result.total || info?.total || undefined,
       metadata: (info?.info || {}) as Record<string, unknown>,
     }
 

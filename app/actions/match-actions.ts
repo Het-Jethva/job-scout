@@ -44,7 +44,18 @@ export async function calculateJobMatch(jobId: string) {
 
     if (resumeEmbeddingResult[0]?.embedding) {
       // Parse vector string format: [0.1,0.2,...]
-      resumeEmbedding = JSON.parse(resumeEmbeddingResult[0].embedding)
+      try {
+        resumeEmbedding = JSON.parse(resumeEmbeddingResult[0].embedding)
+      } catch {
+        // If parsing fails, regenerate embedding
+        resumeEmbedding = await generateEmbedding(resume.rawText)
+        const embeddingLiteral = `[${resumeEmbedding.join(",")}]`
+        await db.$executeRaw`
+          UPDATE "Resume"
+          SET embedding = ${embeddingLiteral}::vector
+          WHERE id = ${resume.id}
+        `
+      }
     } else {
       resumeEmbedding = await generateEmbedding(resume.rawText)
       const embeddingLiteral = `[${resumeEmbedding.join(",")}]`
@@ -65,7 +76,18 @@ export async function calculateJobMatch(jobId: string) {
 
     if (jobEmbeddingResult[0]?.embedding) {
       // Parse vector string format: [0.1,0.2,...]
-      jobEmbedding = JSON.parse(jobEmbeddingResult[0].embedding)
+      try {
+        jobEmbedding = JSON.parse(jobEmbeddingResult[0].embedding)
+      } catch {
+        // If parsing fails, regenerate embedding
+        jobEmbedding = await generateEmbedding(job.description)
+        const embeddingLiteral = `[${jobEmbedding.join(",")}]`
+        await db.$executeRaw`
+          UPDATE "Job"
+          SET embedding = ${embeddingLiteral}::vector
+          WHERE id = ${job.id}
+        `
+      }
     } else {
       jobEmbedding = await generateEmbedding(job.description)
       const embeddingLiteral = `[${jobEmbedding.join(",")}]`
