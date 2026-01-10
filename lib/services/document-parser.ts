@@ -1,5 +1,4 @@
 import mammoth from "mammoth"
-import { createRequire } from "module"
 
 export interface ParsedDocument {
   text: string
@@ -7,34 +6,8 @@ export interface ParsedDocument {
   metadata?: Record<string, unknown>
 }
 
-// Initialize DOMMatrix polyfill once at module load time
-// This ensures it's available before pdf-parse is loaded
-let dommatrixPolyfillInitialized = false
-
-async function initializeDOMMatrixPolyfill() {
-  if (dommatrixPolyfillInitialized) {
-    return
-  }
-
-  // Only polyfill in Node.js environment (server-side)
-  if (typeof window === "undefined" && typeof globalThis.DOMMatrix === "undefined") {
-    try {
-      const dommatrix = await import("node-dommatrix")
-      if (dommatrix && dommatrix.DOMMatrix) {
-        globalThis.DOMMatrix = dommatrix.DOMMatrix as any
-      }
-      dommatrixPolyfillInitialized = true
-    } catch (error) {
-      console.warn("Failed to initialize DOMMatrix polyfill:", error)
-      // Don't throw - some environments might have it already
-    }
-  } else {
-    dommatrixPolyfillInitialized = true
-  }
-}
-
 /**
- * Parse PDF document and extract text
+ * Parse PDF document and extract text using pdfjs-dist
  * Production-ready implementation with comprehensive error handling
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
@@ -47,105 +20,55 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
     throw new Error("Empty buffer provided for PDF parsing")
   }
 
-  // Initialize polyfill before loading pdf-parse
-  await initializeDOMMatrixPolyfill()
-
-  let parser: any = null
-
   try {
-    // Load pdf-parse module
-    const require = createRequire(import.meta.url)
-    const pdfParseModule = require("pdf-parse")
+    // Dynamically import pdfjs-dist legacy build for Node.js compatibility
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs")
 
-    if (!pdfParseModule || typeof pdfParseModule.PDFParse !== "function") {
-      const availableExports = pdfParseModule ? Object.keys(pdfParseModule) : []
-      throw new Error(
-        `PDFParse class not found. Available exports: ${availableExports.join(", ")}`
-      )
-    }
+    // Load PDF document from buffer
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(buffer),
+      useSystemFonts: true,
+    })
 
-    const PDFParse = pdfParseModule.PDFParse
+    const pdfDocument = await loadingTask.promise
+    const numPages = pdfDocument.numPages
+    let fullText = ""
 
-    // Create parser instance
-    parser = new PDFParse({ data: buffer })
+    // Extract text from all pages
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await pdfDocument.getPage(pageNum)
+      const textContent = await page.getTextContent()
 
-    if (!parser) {
-      throw new Error("Failed to create PDF parser instance")
-    }
+      // Collect text items from the page
+      const pageText = textContent.items
+        .filter((item): item is { str: string } => "str" in item)
+        .map((item) => item.str)
+        .join(" ")
 
-    // Extract text - handle different possible return structures
-    const textResult = await parser.getText()
-    
-    // Validate and extract text
-    let extractedText = ""
-    let pageCount: number | undefined = undefined
-
-    // Handle different possible return structures from getText()
-    if (typeof textResult === "string") {
-      extractedText = textResult
-    } else if (textResult && typeof textResult === "object") {
-      // Check for various possible properties
-      if (typeof textResult.text === "string") {
-        extractedText = textResult.text
-      } else if (Array.isArray(textResult.pages)) {
-        // If it returns pages array, join them
-        extractedText = textResult.pages
-          .map((page: any) => {
-            if (typeof page === "string") return page
-            if (page && typeof page.text === "string") return page.text
-            return ""
-          })
-          .filter((text: string) => text.length > 0)
-          .join("\n")
-      } else if (textResult.toString && typeof textResult.toString === "function") {
-        extractedText = String(textResult)
-      } else {
-        // Try to stringify the object as fallback
-        extractedText = JSON.stringify(textResult)
-      }
-
-      // Extract page count if available
-      if (typeof textResult.total === "number") {
-        pageCount = textResult.total
-      } else if (typeof textResult.pageCount === "number") {
-        pageCount = textResult.pageCount
-      } else if (Array.isArray(textResult.pages)) {
-        pageCount = textResult.pages.length
-      }
-    } else if (textResult != null) {
-      extractedText = String(textResult)
-    }
-
-    // If we still don't have text, try getInfo() to get metadata
-    let metadata: Record<string, unknown> = {}
-    try {
-      const info = await parser.getInfo()
-      if (info && typeof info === "object") {
-        metadata = info.info || info.metadata || info
-        // Extract page count from info if not already found
-        if (pageCount === undefined) {
-          if (typeof info.total === "number") {
-            pageCount = info.total
-          } else if (typeof info.pageCount === "number") {
-            pageCount = info.pageCount
-          }
-        }
-      }
-    } catch (infoError) {
-      // Info extraction is optional, continue without it
-      console.warn("Failed to extract PDF metadata:", infoError)
+      fullText += pageText + "\n"
     }
 
     // Validate that we extracted some text
-    if (!extractedText || extractedText.trim().length === 0) {
+    if (!fullText || fullText.trim().length === 0) {
       throw new Error("No text could be extracted from the PDF document")
+    }
+
+    // Get metadata if available
+    let metadata: Record<string, unknown> | undefined
+    try {
+      const pdfMetadata = await pdfDocument.getMetadata()
+      if (pdfMetadata?.info && typeof pdfMetadata.info === "object") {
+        metadata = pdfMetadata.info as Record<string, unknown>
+      }
+    } catch {
+      // Metadata extraction is optional, continue without it
     }
 
     // Clean and return the parsed data
     return {
-      text: cleanText(extractedText),
-      pageCount,
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      text: cleanText(fullText),
+      pageCount: numPages,
+      metadata: metadata && Object.keys(metadata).length > 0 ? metadata : undefined,
     }
   } catch (error) {
     const errorMessage =
@@ -156,15 +79,6 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
       error,
     })
     throw new Error(`Failed to parse PDF document: ${errorMessage}`)
-  } finally {
-    // Always cleanup parser to free memory
-    if (parser && typeof parser.destroy === "function") {
-      try {
-        await parser.destroy()
-      } catch (destroyError) {
-        console.warn("Error destroying PDF parser:", destroyError)
-      }
-    }
   }
 }
 

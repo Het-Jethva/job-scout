@@ -2,10 +2,9 @@ import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
   // External packages that should not be bundled
-  serverExternalPackages: ["pdf-parse", "pdf-parse/node", "pdfkit", "mammoth"],
+  serverExternalPackages: ["pdfjs-dist", "pdfkit", "mammoth"],
 
-  // Turbopack configuration (empty config to silence warning)
-  // The pdf-parse module is handled via direct path resolution in document-parser.ts
+  // Turbopack configuration
   turbopack: {},
 
   // Image configuration for external sources
