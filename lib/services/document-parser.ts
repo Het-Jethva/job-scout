@@ -14,8 +14,13 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
     // Dynamic import of pdf-parse - it's a CommonJS module
     const pdfParseModule = await import("pdf-parse")
     const pdfParse = (pdfParseModule as any).default || pdfParseModule
-    
+
     // pdf-parse expects a buffer directly
+    const data = await pdfParse(buffer)
+
+    return {
+      text: cleanText(data.text),
+      pageCount: data.numpages,
       metadata: data.info as Record<string, unknown>,
     }
   } catch (error) {
