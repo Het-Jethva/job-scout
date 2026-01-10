@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation"
-import { headers } from "next/headers"
-import { auth } from "@/lib/auth"
+import { requireAuth } from "@/lib/auth-utils"
 import { db } from "@/lib/db"
 import {
   Card,
@@ -13,9 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ProfileForm, PreferencesForm, DangerZone } from "./components"
 
 export default async function SettingsPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  })
+  const session = await requireAuth()
 
   if (!session?.user) {
     redirect("/sign-in?callbackUrl=/settings")
