@@ -11,15 +11,11 @@ export interface ParsedDocument {
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
   try {
-    // Dynamic import of pdf-parse
-    const pdfParse = (await import("pdf-parse")).default
-
-    // pdf-parse expects { data: buffer }
-    const data = await pdfParse(buffer)
-
-    return {
-      text: cleanText(data.text),
-      pageCount: data.numpages,
+    // Dynamic import of pdf-parse - it's a CommonJS module
+    const pdfParseModule = await import("pdf-parse")
+    const pdfParse = (pdfParseModule as any).default || pdfParseModule
+    
+    // pdf-parse expects a buffer directly
       metadata: data.info as Record<string, unknown>,
     }
   } catch (error) {
