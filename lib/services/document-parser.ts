@@ -1,4 +1,5 @@
 import mammoth from "mammoth"
+import { extractText } from "unpdf"
 
 export interface ParsedDocument {
   text: string
@@ -7,8 +8,8 @@ export interface ParsedDocument {
 }
 
 /**
- * Parse PDF document and extract text using pdfjs-dist
- * Production-ready implementation with comprehensive error handling
+ * Parse PDF document and extract text using unpdf
+ * Serverless-optimized implementation for Vercel, AWS Lambda, etc.
  */
 export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
   // Validate input
@@ -21,54 +22,22 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedDocument> {
   }
 
   try {
-    // Dynamically import pdfjs-dist legacy build for Node.js compatibility
-    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs")
+    // Use unpdf which is designed for serverless environments
+    const result = await extractText(new Uint8Array(buffer), { mergePages: true })
 
-    // Load PDF document from buffer
-    const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(buffer),
-      useSystemFonts: true,
-    })
-
-    const pdfDocument = await loadingTask.promise
-    const numPages = pdfDocument.numPages
-    let fullText = ""
-
-    // Extract text from all pages
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      const page = await pdfDocument.getPage(pageNum)
-      const textContent = await page.getTextContent()
-
-      // Collect text items from the page
-      const pageText = textContent.items
-        .filter((item) => "str" in item && typeof (item as any).str === "string")
-        .map((item) => (item as any).str as string)
-        .join(" ")
-
-      fullText += pageText + "\n"
-    }
+    // Extract text from result
+    const extractedText = result.text || ""
 
     // Validate that we extracted some text
-    if (!fullText || fullText.trim().length === 0) {
+    if (!extractedText || extractedText.trim().length === 0) {
       throw new Error("No text could be extracted from the PDF document")
-    }
-
-    // Get metadata if available
-    let metadata: Record<string, unknown> | undefined
-    try {
-      const pdfMetadata = await pdfDocument.getMetadata()
-      if (pdfMetadata?.info && typeof pdfMetadata.info === "object") {
-        metadata = pdfMetadata.info as Record<string, unknown>
-      }
-    } catch {
-      // Metadata extraction is optional, continue without it
     }
 
     // Clean and return the parsed data
     return {
-      text: cleanText(fullText),
-      pageCount: numPages,
-      metadata: metadata && Object.keys(metadata).length > 0 ? metadata : undefined,
+      text: cleanText(extractedText),
+      pageCount: result.totalPages,
+      metadata: undefined, // unpdf doesn't expose metadata in this API
     }
   } catch (error) {
     const errorMessage =

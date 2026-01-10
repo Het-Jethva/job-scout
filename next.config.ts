@@ -2,7 +2,7 @@ import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
   // External packages that should not be bundled
-  serverExternalPackages: ["pdfjs-dist", "pdfkit", "mammoth"],
+  serverExternalPackages: ["unpdf", "pdfkit", "mammoth"],
 
   // Turbopack configuration
   turbopack: {},
