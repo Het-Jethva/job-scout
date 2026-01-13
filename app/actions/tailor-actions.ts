@@ -7,13 +7,27 @@ import {
   analyzeATSCompatibility,
   extractResumeData,
 } from "@/lib/services/openrouter"
+import { jobIdSchema, tailoredResumeIdSchema } from "@/lib/validations"
 import { revalidatePath } from "next/cache"
+import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
 
 /**
  * Tailor resume for a specific job
  */
 export async function tailorResumeForJob(jobId: string) {
+  // Validate input
+  const validation = jobIdSchema.safeParse(jobId)
+  if (!validation.success) {
+    return { success: false, error: "Invalid job ID" }
+  }
+
   const session = await requireAuth()
+
+  // Apply rate limiting for AI-heavy operations
+  const rateLimitResult = checkRateLimit(`user:${session.user.id}`, RATE_LIMITS.aiOperation)
+  if (!rateLimitResult.success) {
+    return rateLimitError(rateLimitResult)
+  }
 
   // Get user's active resume
   const resume = await db.resume.findFirst({
@@ -107,6 +121,12 @@ export async function tailorResumeForJob(jobId: string) {
  * Get tailored resume for a job
  */
 export async function getTailoredResume(jobId: string) {
+  // Validate input
+  const validation = jobIdSchema.safeParse(jobId)
+  if (!validation.success) {
+    return null
+  }
+
   const session = await requireAuth()
 
   const resume = await db.resume.findFirst({
@@ -204,6 +224,12 @@ export async function analyzeResumeATS() {
  * Delete a tailored resume
  */
 export async function deleteTailoredResume(tailoredResumeId: string) {
+  // Validate input
+  const validation = tailoredResumeIdSchema.safeParse(tailoredResumeId)
+  if (!validation.success) {
+    return { success: false, error: "Invalid tailored resume ID" }
+  }
+
   const session = await requireAuth()
 
   // Verify ownership

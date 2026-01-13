@@ -3,9 +3,24 @@ import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 
 /**
+ * Type for Supabase auth user object
+ */
+interface SupabaseAuthUser {
+  id: string
+  email?: string | null
+  user_metadata?: {
+    name?: string
+    full_name?: string
+    avatar_url?: string
+    picture?: string
+  }
+  email_confirmed_at?: string | null
+}
+
+/**
  * Ensure user exists in database - creates if missing
  */
-async function ensureUserExists(authUser: any) {
+async function ensureUserExists(authUser: SupabaseAuthUser) {
   const existingUser = await db.user.findUnique({
     where: { id: authUser.id },
   })
@@ -56,18 +71,18 @@ export async function getServerSession() {
   return {
     user: dbUser
       ? {
-          id: dbUser.id,
-          email: dbUser.email,
-          name: dbUser.name,
-          image: dbUser.image,
-        }
+        id: dbUser.id,
+        email: dbUser.email,
+        name: dbUser.name,
+        image: dbUser.image,
+      }
       : {
-          id: user.id,
-          email: user.email ?? "",
-          name:
-            user.user_metadata?.name ?? user.user_metadata?.full_name ?? null,
-          image: user.user_metadata?.avatar_url ?? null,
-        },
+        id: user.id,
+        email: user.email ?? "",
+        name:
+          user.user_metadata?.name ?? user.user_metadata?.full_name ?? null,
+        image: user.user_metadata?.avatar_url ?? null,
+      },
   }
 }
 

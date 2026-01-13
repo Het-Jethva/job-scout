@@ -21,68 +21,192 @@ interface OpenRouterResponse {
   }[]
 }
 
+// Circuit breaker state
+interface CircuitBreakerState {
+  failures: number
+  lastFailure: number
+  isOpen: boolean
+}
+
+const circuitBreaker: CircuitBreakerState = {
+  failures: 0,
+  lastFailure: 0,
+  isOpen: false,
+}
+
+const CIRCUIT_BREAKER_THRESHOLD = 5 // failures before opening circuit
+const CIRCUIT_BREAKER_RESET_MS = 60_000 // 1 minute before retry
+
 /**
- * Call OpenRouter API for chat completions
+ * Sleep utility for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Calculate exponential backoff with jitter
+ */
+function getBackoffDelay(attempt: number, baseDelayMs = 1000): number {
+  const exponentialDelay = baseDelayMs * Math.pow(2, attempt)
+  const jitter = Math.random() * 0.3 * exponentialDelay // 0-30% jitter
+  return Math.min(exponentialDelay + jitter, 30000) // Max 30 seconds
+}
+
+/**
+ * Check if error is retryable (transient)
+ */
+function isRetryableError(error: Error, statusCode?: number): boolean {
+  if (statusCode) {
+    // Retry on server errors and rate limits
+    return statusCode >= 500 || statusCode === 429 || statusCode === 408
+  }
+  // Retry on network errors
+  const message = error.message.toLowerCase()
+  return (
+    message.includes("network") ||
+    message.includes("timeout") ||
+    message.includes("econnrefused") ||
+    message.includes("econnreset") ||
+    message.includes("socket hang up")
+  )
+}
+
+/**
+ * Call OpenRouter API for chat completions with retry logic
  */
 async function callOpenRouter(
   messages: OpenRouterMessage[],
-  jsonMode: boolean = false
+  jsonMode: boolean = false,
+  maxRetries: number = 3
 ): Promise<string> {
+  // Check circuit breaker
+  if (circuitBreaker.isOpen) {
+    const timeSinceLastFailure = Date.now() - circuitBreaker.lastFailure
+    if (timeSinceLastFailure < CIRCUIT_BREAKER_RESET_MS) {
+      throw new Error(
+        "AI service temporarily unavailable. Please try again in a minute."
+      )
+    }
+    // Reset circuit breaker for retry
+    circuitBreaker.isOpen = false
+    circuitBreaker.failures = 0
+  }
+
   const apiKey = env.OPENROUTER_API_KEY
+  const API_TIMEOUT_MS = 30000 // 30 seconds
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": env.NEXT_PUBLIC_APP_URL,
-      "X-Title": "Job Scout",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: 0.7,
-      max_tokens: 4096,
-      ...(jsonMode && { response_format: { type: "json_object" } }),
-    }),
-  })
+  let lastError: Error | null = null
 
-  if (!response.ok) {
-    let errorMessage = `OpenRouter API error: ${response.status}`
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Add delay for retries (not first attempt)
+    if (attempt > 0) {
+      const delay = getBackoffDelay(attempt - 1)
+      await sleep(delay)
+    }
+
+    // Create abort controller for timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS)
+
     try {
-      const errorData = await response.json().catch(() => ({}))
-      if (errorData.error?.message) {
-        errorMessage = errorData.error.message
+      const response = await fetch(OPENROUTER_API_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": env.NEXT_PUBLIC_APP_URL,
+          "X-Title": "Job Scout",
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages,
+          temperature: 0.7,
+          max_tokens: 4096,
+          ...(jsonMode && { response_format: { type: "json_object" } }),
+        }),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        let errorMessage = `OpenRouter API error: ${response.status}`
+        try {
+          const errorData = await response.json().catch(() => ({}))
+          if (errorData.error?.message) {
+            errorMessage = errorData.error.message
+          }
+        } catch {
+          // Ignore JSON parse errors for error response
+        }
+
+        // Check if retryable
+        if (isRetryableError(new Error(errorMessage), response.status)) {
+          lastError = new Error(errorMessage)
+          continue // Retry
+        }
+
+        // Non-retryable errors
+        if (response.status === 401) {
+          throw new Error(
+            "Invalid API key. Please check your OPENROUTER_API_KEY."
+          )
+        }
+        if (response.status === 400) {
+          throw new Error(`Invalid request: ${errorMessage}`)
+        }
+        throw new Error(errorMessage)
       }
-    } catch {
-      // Ignore JSON parse errors for error response
-    }
 
-    if (response.status === 429) {
-      throw new Error("Rate limit exceeded. Please try again later.")
+      const data = (await response.json()) as OpenRouterResponse
+
+      if (!data.choices || data.choices.length === 0) {
+        throw new Error("No response choices from AI service")
+      }
+
+      const content = data.choices[0]?.message?.content
+      if (!content) {
+        throw new Error("Empty response content from AI service")
+      }
+
+      // Success - reset circuit breaker
+      circuitBreaker.failures = 0
+      circuitBreaker.isOpen = false
+
+      return content
+    } catch (error) {
+      clearTimeout(timeoutId)
+
+      if (error instanceof Error) {
+        if (error.name === "AbortError") {
+          lastError = new Error("AI service request timed out. Please try again.")
+          continue // Retry on timeout
+        }
+
+        // Check if retryable network error
+        if (isRetryableError(error)) {
+          lastError = error
+          continue // Retry
+        }
+
+        // Non-retryable error - throw immediately
+        throw error
+      }
+      throw error
     }
-    if (response.status === 401) {
-      throw new Error("Invalid API key. Please check your OPENROUTER_API_KEY.")
-    }
-    if (response.status === 400) {
-      throw new Error(`Invalid request: ${errorMessage}`)
-    }
-    throw new Error(errorMessage)
   }
 
-  const data = (await response.json()) as OpenRouterResponse
-  
-  if (!data.choices || data.choices.length === 0) {
-    throw new Error("No response choices from AI service")
+  // All retries exhausted - update circuit breaker
+  circuitBreaker.failures++
+  circuitBreaker.lastFailure = Date.now()
+  if (circuitBreaker.failures >= CIRCUIT_BREAKER_THRESHOLD) {
+    circuitBreaker.isOpen = true
   }
-  
-  const content = data.choices[0]?.message?.content
-  if (!content) {
-    throw new Error("Empty response content from AI service")
-  }
-  
-  return content
+
+  throw lastError || new Error("AI service request failed after retries")
 }
+
 
 /**
  * Parse JSON from response, handling markdown code blocks
@@ -186,7 +310,7 @@ Respond with valid JSON only.`
     console.error("Resume analysis error:", error)
     const errorMessage =
       error instanceof Error ? error.message : String(error)
-    
+
     // Provide more specific error messages
     if (errorMessage.includes("Rate limit") || errorMessage.includes("429")) {
       throw new Error("Rate limit exceeded. Please try again later.")
@@ -197,7 +321,7 @@ Respond with valid JSON only.`
     if (errorMessage.includes("JSON") || errorMessage.includes("parse")) {
       throw new Error("Failed to parse AI response. Please try again.")
     }
-    
+
     throw new Error(`Failed to analyze resume with AI: ${errorMessage}`)
   }
 }
@@ -479,8 +603,8 @@ export async function generateImprovementSuggestions(
 
 CANDIDATE PROFILE:
 - Skills: ${resumeAnalysis.skills
-    .map((s) => `${s.name} (${s.level || "unknown level"})`)
-    .join(", ")}
+      .map((s) => `${s.name} (${s.level || "unknown level"})`)
+      .join(", ")}
 - Experience: ${resumeAnalysis.yearsOfExperience} years
 - Summary: ${resumeAnalysis.summary}
 

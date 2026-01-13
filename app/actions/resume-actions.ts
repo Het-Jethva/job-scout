@@ -4,8 +4,9 @@ import { db } from "@/lib/db"
 import { requireAuth } from "@/lib/auth-utils"
 import { parseDocument } from "@/lib/services/document-parser"
 import { extractResumeData, generateEmbedding } from "@/lib/services/openrouter"
-import { resumeUploadSchema, safeValidate } from "@/lib/validations"
+import { resumeUploadSchema, resumeIdSchema, skillIdSchema, skillsArraySchema, safeValidate } from "@/lib/validations"
 import { revalidatePath } from "next/cache"
+import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
 
 export interface UploadResumeResult {
   success: boolean
@@ -37,6 +38,12 @@ export async function processResumeUpload(
 
     const session = await requireAuth()
     const userId = session.user.id
+
+    // Apply rate limiting for AI-heavy operations
+    const rateLimitResult = checkRateLimit(`user:${userId}`, RATE_LIMITS.aiOperation)
+    if (!rateLimitResult.success) {
+      return rateLimitError(rateLimitResult)
+    }
 
     const parsedUrl = new URL(fileUrl)
 
@@ -80,27 +87,32 @@ export async function processResumeUpload(
     // pgvector expects a bracketed list, not a Postgres array literal
     const embeddingLiteral = `[${embedding.join(",")}]`
 
-    // Deactivate previous resumes
-    await db.resume.updateMany({
-      where: { userId, isActive: true },
-      data: { isActive: false },
-    })
+    // Use transaction to prevent race conditions when deactivating/creating resumes
+    const resume = await db.$transaction(async (tx) => {
+      // Deactivate previous resumes
+      await tx.resume.updateMany({
+        where: { userId, isActive: true },
+        data: { isActive: false },
+      })
 
-    // Save to database
-    const resume = await db.resume.create({
-      data: {
-        userId,
-        fileName,
-        fileUrl,
-        fileType,
-        fileSize,
-        rawText: parsed.text,
-        parsedData: JSON.parse(JSON.stringify(analysis)),
-        skills: analysis.skills.map((s) => s.name),
-        experience: JSON.parse(JSON.stringify(analysis.experience)),
-        education: JSON.parse(JSON.stringify(analysis.education)),
-        isActive: true,
-      },
+      // Save to database
+      const newResume = await tx.resume.create({
+        data: {
+          userId,
+          fileName,
+          fileUrl,
+          fileType,
+          fileSize,
+          rawText: parsed.text,
+          parsedData: JSON.parse(JSON.stringify(analysis)),
+          skills: analysis.skills.map((s) => s.name),
+          experience: JSON.parse(JSON.stringify(analysis.experience)),
+          education: JSON.parse(JSON.stringify(analysis.education)),
+          isActive: true,
+        },
+      })
+
+      return newResume
     })
 
     // Store embedding using raw SQL (Prisma doesn't directly support vector type)
@@ -166,46 +178,69 @@ export async function getActiveResume() {
  * Delete a resume
  */
 export async function deleteResume(resumeId: string) {
+  // Validate input
+  const validation = resumeIdSchema.safeParse(resumeId)
+  if (!validation.success) {
+    return { success: false, error: "Invalid resume ID" }
+  }
+
   const session = await requireAuth()
 
-  await db.resume.delete({
-    where: {
-      id: resumeId,
-      userId: session.user.id,
-    },
-  })
+  try {
+    await db.resume.delete({
+      where: {
+        id: resumeId,
+        userId: session.user.id,
+      },
+    })
 
-  revalidatePath("/resume")
-  revalidatePath("/dashboard")
+    revalidatePath("/resume")
+    revalidatePath("/dashboard")
 
-  return { success: true }
+    return { success: true }
+  } catch {
+    return { success: false, error: "Failed to delete resume" }
+  }
 }
 
 /**
  * Set a resume as active
  */
 export async function setActiveResume(resumeId: string) {
+  // Validate input
+  const validation = resumeIdSchema.safeParse(resumeId)
+  if (!validation.success) {
+    return { success: false, error: "Invalid resume ID" }
+  }
+
   const session = await requireAuth()
 
-  // Deactivate all resumes
-  await db.resume.updateMany({
-    where: { userId: session.user.id },
-    data: { isActive: false },
-  })
+  try {
+    // Use transaction to prevent race conditions
+    await db.$transaction(async (tx) => {
+      // Deactivate all resumes
+      await tx.resume.updateMany({
+        where: { userId: session.user.id },
+        data: { isActive: false },
+      })
 
-  // Activate the selected one
-  await db.resume.update({
-    where: {
-      id: resumeId,
-      userId: session.user.id,
-    },
-    data: { isActive: true },
-  })
+      // Activate the selected one
+      await tx.resume.update({
+        where: {
+          id: resumeId,
+          userId: session.user.id,
+        },
+        data: { isActive: true },
+      })
+    })
 
-  revalidatePath("/resume")
-  revalidatePath("/dashboard")
+    revalidatePath("/resume")
+    revalidatePath("/dashboard")
 
-  return { success: true }
+    return { success: true }
+  } catch {
+    return { success: false, error: "Failed to set active resume" }
+  }
 }
 
 /**
@@ -214,6 +249,12 @@ export async function setActiveResume(resumeId: string) {
 export async function addUserSkills(
   skills: Array<{ skill: string; level?: string; yearsExp?: number }>
 ) {
+  // Validate input
+  const validation = skillsArraySchema.safeParse(skills)
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues[0]?.message || "Invalid skills data" }
+  }
+
   const session = await requireAuth()
 
   const results = await Promise.all(
@@ -259,15 +300,25 @@ export async function getUserSkills() {
  * Remove a user skill
  */
 export async function removeUserSkill(skillId: string) {
+  // Validate input
+  const validation = skillIdSchema.safeParse(skillId)
+  if (!validation.success) {
+    return { success: false, error: "Invalid skill ID" }
+  }
+
   const session = await requireAuth()
 
-  await db.userSkill.delete({
-    where: {
-      id: skillId,
-      userId: session.user.id,
-    },
-  })
+  try {
+    await db.userSkill.delete({
+      where: {
+        id: skillId,
+        userId: session.user.id,
+      },
+    })
 
-  revalidatePath("/resume")
-  return { success: true }
+    revalidatePath("/resume")
+    return { success: true }
+  } catch {
+    return { success: false, error: "Failed to remove skill" }
+  }
 }

@@ -4,13 +4,27 @@ import { db } from "@/lib/db"
 import { requireAuth } from "@/lib/auth-utils"
 import { analyzeMatch } from "@/lib/services/matching-engine"
 import { extractResumeData, generateEmbedding } from "@/lib/services/openrouter"
+import { jobIdSchema } from "@/lib/validations"
 import { revalidatePath } from "next/cache"
+import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
 
 /**
  * Calculate match between user's resume and a specific job
  */
 export async function calculateJobMatch(jobId: string) {
+  // Validate input
+  const validation = jobIdSchema.safeParse(jobId)
+  if (!validation.success) {
+    return { success: false, error: "Invalid job ID" }
+  }
+
   const session = await requireAuth()
+
+  // Apply rate limiting for AI-heavy operations
+  const rateLimitResult = checkRateLimit(`user:${session.user.id}`, RATE_LIMITS.aiOperation)
+  if (!rateLimitResult.success) {
+    return rateLimitError(rateLimitResult)
+  }
 
   // Get user's active resume
   const resume = await db.resume.findFirst({
@@ -179,6 +193,12 @@ export async function calculateJobMatch(jobId: string) {
  * Get match for a specific job
  */
 export async function getJobMatch(jobId: string) {
+  // Validate input
+  const validation = jobIdSchema.safeParse(jobId)
+  if (!validation.success) {
+    return null
+  }
+
   const session = await requireAuth()
 
   const resume = await db.resume.findFirst({
@@ -386,16 +406,24 @@ export async function calculateBatchMatches(limit = 10) {
   const results = []
   const MATCH_BATCH_SIZE = 3
 
+  // Type for batch match results
+  interface MatchBatchResult {
+    jobId: string
+    title: string
+    success: boolean
+    score: number | null
+  }
+
   for (let i = 0; i < jobs.length; i += MATCH_BATCH_SIZE) {
     const batch = jobs.slice(i, i + MATCH_BATCH_SIZE)
     const batchResults = await Promise.allSettled(
-      batch.map(async (job) => {
+      batch.map(async (job): Promise<MatchBatchResult> => {
         const result = await calculateJobMatch(job.id)
         return {
           jobId: job.id,
           title: job.title,
           success: result.success,
-          score: result.success ? result.match?.score : null,
+          score: result.success ? result.match?.score ?? null : null,
         }
       })
     )
@@ -403,8 +431,8 @@ export async function calculateBatchMatches(limit = 10) {
     // Add fulfilled results
     results.push(
       ...batchResults
-        .filter((r) => r.status === "fulfilled")
-        .map((r) => (r as PromiseFulfilledResult<any>).value)
+        .filter((r): r is PromiseFulfilledResult<MatchBatchResult> => r.status === "fulfilled")
+        .map((r) => r.value)
     )
   }
 

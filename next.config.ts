@@ -7,12 +7,43 @@ const nextConfig: NextConfig = {
   // Turbopack configuration
   turbopack: {},
 
-  // Image configuration for external sources
+  // Image configuration - restricted to known trusted domains
   images: {
     remotePatterns: [
+      // Supabase storage
       {
         protocol: "https",
-        hostname: "**",
+        hostname: "*.supabase.co",
+      },
+      // Job board company logos
+      {
+        protocol: "https",
+        hostname: "remotive.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.remotive.com",
+      },
+      {
+        protocol: "https",
+        hostname: "remoteok.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.remoteok.com",
+      },
+      {
+        protocol: "https",
+        hostname: "www.themuse.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.themuse.com",
+      },
+      // Common CDN for company logos
+      {
+        protocol: "https",
+        hostname: "logo.clearbit.com",
       },
     ],
   },
@@ -46,6 +77,22 @@ const nextConfig: NextConfig = {
           {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
+          },
+          {
+            // Content Security Policy - prevents XSS and data injection
+            // Adjust as needed for your specific requirements
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Required for Next.js
+              "style-src 'self' 'unsafe-inline'", // Required for styled components
+              "img-src 'self' data: https://*.supabase.co https://remotive.com https://*.remotive.com https://remoteok.com https://*.remoteok.com https://*.themuse.com https://logo.clearbit.com",
+              "font-src 'self' data:",
+              "connect-src 'self' https://*.supabase.co https://openrouter.ai https://remotive.com https://remoteok.com https://www.themuse.com",
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+            ].join("; "),
           },
         ],
       },

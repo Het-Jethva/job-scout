@@ -74,6 +74,18 @@ export const resumeUploadSchema = z.object({
 // Job ID validation
 export const jobIdSchema = z.string().cuid("Invalid job ID format")
 
+// Resume ID validation
+export const resumeIdSchema = z.string().cuid("Invalid resume ID format")
+
+// Skill ID validation
+export const skillIdSchema = z.string().cuid("Invalid skill ID format")
+
+// Tailored Resume ID validation
+export const tailoredResumeIdSchema = z.string().cuid("Invalid tailored resume ID format")
+
+// Match ID validation
+export const matchIdSchema = z.string().cuid("Invalid match ID format")
+
 // Pagination schema
 export const paginationSchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -107,6 +119,27 @@ export const userPreferencesSchema = z.object({
   salaryMax: z.number().min(0).optional(),
   remoteOnly: z.boolean().optional(),
 })
+
+// Profile update schema (stricter than optional nameSchema)
+export const profileUpdateSchema = z.object({
+  name: z
+    .string()
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name is too long")
+    .regex(
+      /^[a-zA-Z\s'-]+$/,
+      "Name can only contain letters, spaces, hyphens, and apostrophes"
+    ),
+})
+
+// Skills array schema for addUserSkills
+export const skillsArraySchema = z.array(skillSchema).min(1).max(50)
+
+// Limit schema with enforced maximum
+export const limitSchema = z.coerce.number().min(1).max(100).default(20)
+
+// Batch limit schema (stricter for batch operations)
+export const batchLimitSchema = z.coerce.number().min(1).max(50).default(10)
 
 // Type exports
 export type SignUpInput = z.infer<typeof signUpSchema>
