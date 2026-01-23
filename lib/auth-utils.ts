@@ -26,22 +26,47 @@ async function ensureUserExists(authUser: SupabaseAuthUser) {
   })
 
   if (!existingUser) {
-    // Create user if they don't exist (for existing auth users before trigger was set up)
-    await db.user.create({
-      data: {
-        id: authUser.id,
-        email: authUser.email ?? "",
-        name:
-          authUser.user_metadata?.name ??
-          authUser.user_metadata?.full_name ??
-          null,
-        image:
-          authUser.user_metadata?.avatar_url ??
-          authUser.user_metadata?.picture ??
-          null,
-        emailVerified: authUser.email_confirmed_at != null,
-      },
+    // Check if user exists with same email but different ID (e.g. re-created auth user)
+    const userWithSameEmail = await db.user.findUnique({
+      where: { email: authUser.email ?? "" },
     })
+
+    if (userWithSameEmail) {
+      // Update the existing user to match the new auth ID
+      // This preserves their data while linking to the new auth record
+      await db.user.update({
+        where: { email: authUser.email ?? "" },
+        data: {
+          id: authUser.id,
+          name:
+            authUser.user_metadata?.name ??
+            authUser.user_metadata?.full_name ??
+            userWithSameEmail.name,
+          image:
+            authUser.user_metadata?.avatar_url ??
+            authUser.user_metadata?.picture ??
+            userWithSameEmail.image,
+          emailVerified: authUser.email_confirmed_at != null,
+        },
+      })
+    } else {
+      // Create user if they don't exist (for existing auth users before trigger was set up)
+      await db.user.create({
+        data: {
+          id: authUser.id,
+          email: authUser.email ?? "",
+          name:
+            authUser.user_metadata?.name ??
+            authUser.user_metadata?.full_name ??
+            null,
+          image:
+            authUser.user_metadata?.avatar_url ??
+            authUser.user_metadata?.picture ??
+            null,
+          emailVerified: authUser.email_confirmed_at != null,
+        },
+      })
+    }
   }
 
   return (
