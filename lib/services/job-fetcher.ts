@@ -21,11 +21,11 @@ export interface JobListing {
 
 // Rate limiting helper
 const rateLimiters: Record<string, { lastCall: number; minInterval: number }> =
-  {
-    themuse: { lastCall: 0, minInterval: 1000 }, // 1 request per second
-    remotive: { lastCall: 0, minInterval: 15000 }, // Very limited, be conservative
-    remoteok: { lastCall: 0, minInterval: 2000 }, // 1 request per 2 seconds
-  }
+{
+  themuse: { lastCall: 0, minInterval: 1000 }, // 1 request per second
+  remotive: { lastCall: 0, minInterval: 15000 }, // Very limited, be conservative
+  remoteok: { lastCall: 0, minInterval: 2000 }, // 1 request per 2 seconds
+}
 
 async function rateLimit(source: string): Promise<void> {
   const limiter = rateLimiters[source]
@@ -155,7 +155,8 @@ export async function fetchRemotiveJobs(options: {
         company: sanitizeText(
           (job.company_name as string) || "Unknown Company"
         ),
-        companyLogo: (job.company_logo as string) || undefined,
+        // Remotive blocks cross-origin image requests (CORP header), so skip their logos
+        companyLogo: undefined,
         location: (job.candidate_required_location as string) || "Worldwide",
         jobType: (job.job_type as string) || undefined,
         isRemote: true, // All Remotive jobs are remote
