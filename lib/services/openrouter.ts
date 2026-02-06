@@ -281,20 +281,79 @@ export interface ResumeAnalysis {
 export async function extractResumeData(
   resumeText: string
 ): Promise<ResumeAnalysis> {
-  const systemPrompt = `You are an expert resume analyzer. You MUST respond with valid JSON only, no other text.`
+  const systemPrompt = `You are an elite resume analyzer and career intelligence specialist with 15+ years of experience in technical recruiting, HR analytics, and talent acquisition across Fortune 500 companies and top tech firms.
 
-  const userPrompt = `Analyze the following resume and extract structured information. Respond with a JSON object containing:
-- skills: array of {name, category, level} where category is one of: technical, soft, language, tool, framework, database, cloud, other. level is: beginner, intermediate, advanced, expert
-- keywords: array of important keywords from the resume
-- experience: array of {title, company, duration, responsibilities} 
-- education: array of {degree, institution, year, field}
-- summary: brief professional summary
-- yearsOfExperience: number of total years
+Your expertise includes:
+- Deep understanding of technical skill taxonomies across software engineering, data science, DevOps, cloud computing, and emerging technologies
+- Mastery of industry-standard naming conventions (e.g., "React.js" not "react", "Amazon Web Services (AWS)" with common abbreviations)
+- Ability to detect implied skills from project descriptions, job responsibilities, and achievements
+- Understanding of skill progression and proficiency indicators from context
+- Recognition of transferable skills and soft skills from accomplishments
+
+You MUST respond with valid JSON only, no other text or markdown formatting.`
+
+  const userPrompt = `Analyze this resume with expert precision and extract comprehensive structured information.
+
+## EXTRACTION GUIDELINES:
+
+### Skills Extraction (CRITICAL):
+1. **Explicitly mentioned skills**: Extract all technologies, tools, frameworks, languages directly stated
+2. **Implied skills**: Infer skills from context (e.g., "deployed microservices on Kubernetes" implies Docker, containerization, CI/CD knowledge)
+3. **Transferable skills**: Identify soft skills from achievements (e.g., "led team of 5" implies leadership, team management)
+4. **Skill naming**: Use industry-standard names with common abbreviations in parentheses where applicable
+5. **Skill level determination**:
+   - **expert**: 5+ years experience, led projects, trained others, or explicitly stated as expert/senior
+   - **advanced**: 3-5 years, significant project involvement, production deployments
+   - **intermediate**: 1-3 years, multiple projects, demonstrated proficiency
+   - **beginner**: < 1 year, coursework, certifications, or limited exposure
+
+### Category Classification:
+- **programming**: Programming/scripting languages (Python, JavaScript, Go, etc.)
+- **framework**: Application frameworks (React, Django, Spring Boot, etc.)
+- **database**: Database technologies (PostgreSQL, MongoDB, Redis, etc.)
+- **cloud**: Cloud platforms & services (AWS, GCP, Azure services)
+- **devops**: Infrastructure & DevOps tools (Docker, Kubernetes, Terraform, CI/CD)
+- **tool**: Development tools & platforms (Git, Jira, VS Code, etc.)
+- **data**: Data & ML tools (Pandas, TensorFlow, Tableau, etc.)
+- **soft**: Soft skills (Leadership, Communication, Problem-solving, etc.)
+- **certification**: Certifications and credentials
+- **other**: Domain knowledge, methodologies, other skills
+
+### Experience Analysis:
+- Calculate precise duration for each role
+- Extract quantifiable achievements with metrics when available
+- Identify key technologies used in each role
+- Note leadership and scope indicators
+
+### Output JSON Schema:
+{
+  "skills": [{
+    "name": "string (industry-standard name)",
+    "category": "programming|framework|database|cloud|devops|tool|data|soft|certification|other",
+    "level": "beginner|intermediate|advanced|expert",
+    "yearsUsed": "number (estimated years, optional)"
+  }],
+  "keywords": ["string array of important ATS keywords from resume"],
+  "experience": [{
+    "title": "string",
+    "company": "string",
+    "duration": "string (e.g., 'Jan 2020 - Present' or '2.5 years')",
+    "responsibilities": ["string array of key responsibilities/achievements"]
+  }],
+  "education": [{
+    "degree": "string",
+    "institution": "string",
+    "year": "string",
+    "field": "string"
+  }],
+  "summary": "string (2-3 sentence professional summary highlighting key strengths)",
+  "yearsOfExperience": "number (total professional years, calculated from work history)"
+}
 
 RESUME TEXT:
 ${resumeText}
 
-Respond with valid JSON only.`
+Provide complete, accurate JSON response only.`
 
   try {
     const response = await callOpenRouter(
@@ -383,18 +442,53 @@ export async function extractJobRequirements(jobDescription: string): Promise<{
   niceToHave: string[]
   experienceLevel: string
 }> {
-  const systemPrompt = `You are an expert job description analyzer. You MUST respond with valid JSON only.`
+  const systemPrompt = `You are a senior technical recruiter and job market analyst with extensive experience parsing job descriptions across technology, engineering, and business domains.
 
-  const userPrompt = `Analyze this job description and extract structured requirements. Respond with a JSON object containing:
-- skills: array of required technical and soft skills
-- requirements: array of must-have requirements
-- niceToHave: array of nice-to-have qualifications
-- experienceLevel: one of entry, mid, senior, lead, executive
+Your expertise includes:
+- Distinguishing between hard requirements vs. nice-to-haves based on language cues ("must have", "required" vs. "preferred", "bonus")
+- Understanding industry skill taxonomies and recognizing equivalent skills (e.g., AWS/GCP/Azure are interchangeable cloud skills)
+- Detecting hidden requirements implied by tech stack or company context
+- Accurate experience level classification based on years mentioned, scope of responsibilities, and title expectations
+
+You MUST respond with valid JSON only, no other text or markdown formatting.`
+
+  const userPrompt = `Analyze this job description with recruiter-level precision and extract structured requirements.
+
+## EXTRACTION GUIDELINES:
+
+### Skills Extraction (CRITICAL):
+1. **Required skills**: Skills explicitly marked as "required", "must have", "essential", or listed in requirements section
+2. **Preferred skills**: Skills marked as "nice to have", "preferred", "bonus", or in "plus" section
+3. **Implied skills**: Core skills implied by the tech stack (e.g., REST APIs implies HTTP, JSON knowledge)
+4. **Skill naming**: Use consistent, industry-standard naming (e.g., "React" not "ReactJS" or "react.js")
+5. **Prioritize by frequency**: Skills mentioned multiple times are more critical
+
+### Experience Level Detection:
+Classify based on:
+- **entry**: 0-2 years, "junior", "graduate", "associate", entry-level responsibilities
+- **mid**: 2-5 years, "mid-level", independent contributor, feature ownership
+- **senior**: 5-8 years, "senior", technical leadership, mentoring, architecture decisions
+- **lead**: 8-12 years, "lead", "principal", "staff", team leadership, cross-team influence
+- **executive**: 12+ years, "director", "VP", "CTO", strategic/organizational leadership
+
+### Requirements Classification:
+- **Hard requirements**: Non-negotiable (degree requirements, security clearances, specific certifications)
+- **Soft requirements**: Important but flexible (exact years of experience, specific tool versions)
+
+### Output JSON Schema:
+{
+  "skills": ["string array of ALL technical and soft skills, prioritized by importance"],
+  "requirements": ["string array of must-have requirements and qualifications"],
+  "niceToHave": ["string array of preferred/bonus qualifications"],
+  "experienceLevel": "entry|mid|senior|lead|executive",
+  "yearsRequired": "number (minimum years if specified, 0 if not mentioned)",
+  "educationRequired": "string (degree requirement if any, empty string if flexible)"
+}
 
 JOB DESCRIPTION:
 ${jobDescription}
 
-Respond with valid JSON only.`
+Provide complete, accurate JSON response only.`
 
   try {
     const response = await callOpenRouter(
@@ -425,30 +519,62 @@ export async function generateMatchExplanation(
   matchScore: number,
   skillGaps: string[]
 ): Promise<string> {
-  const prompt = `Generate a clear, helpful explanation of how well this candidate matches the job.
+  const systemPrompt = `You are a career coach and technical interview specialist who helps candidates understand their fit for roles and develop improvement strategies.
 
-CANDIDATE PROFILE:
-- Skills: ${resumeData.skills.map((s) => s.name).join(", ")}
-- Years of Experience: ${resumeData.yearsOfExperience}
-- Summary: ${resumeData.summary}
+Your communication style:
+- Encouraging but realistic - never sugarcoat significant gaps
+- Action-oriented - every weakness should have a concrete path forward
+- Specific - reference actual skills and experiences from the resume
+- Professional - suitable for sharing with hiring managers if needed
 
-JOB REQUIREMENTS:
-- Required Skills: ${jobRequirements.skills.join(", ")}
-- Requirements: ${jobRequirements.requirements.join(", ")}
+You provide personalized, insightful analysis that helps candidates make informed application decisions.`
 
-MATCH ANALYSIS:
-- Match Score: ${matchScore}%
-- Skills Gap: ${skillGaps.length > 0 ? skillGaps.join(", ") : "None"}
+  const prompt = `Generate a personalized, actionable match explanation for this candidate-job pairing.
 
-Write a 2-3 paragraph explanation that:
-1. Highlights the candidate's strengths for this role
-2. Explains any gaps and their significance
-3. Provides actionable advice for the candidate
+## CANDIDATE PROFILE:
+- **Technical Skills**: ${resumeData.skills.filter(s => s.category !== 'soft').map((s) => `${s.name} (${s.level || 'proficient'})`).join(", ") || 'Not specified'}
+- **Soft Skills**: ${resumeData.skills.filter(s => s.category === 'soft').map((s) => s.name).join(", ") || 'To be assessed'}
+- **Total Experience**: ${resumeData.yearsOfExperience} years
+- **Summary**: ${resumeData.summary}
 
-Be encouraging but honest. Focus on facts from the resume.`
+## JOB REQUIREMENTS:
+- **Required Skills**: ${jobRequirements.skills.join(", ")}
+- **Key Requirements**: ${jobRequirements.requirements.join(", ")}
+
+## MATCH ANALYSIS:
+- **Overall Match Score**: ${matchScore}%
+- **Skills Gap**: ${skillGaps.length > 0 ? skillGaps.join(", ") : "No critical gaps identified"}
+- **Match Quality**: ${matchScore >= 80 ? 'Excellent Match' : matchScore >= 60 ? 'Strong Match' : matchScore >= 40 ? 'Moderate Match' : 'Development Opportunity'}
+
+## REQUIRED OUTPUT STRUCTURE:
+
+Write a 3-4 paragraph analysis following this structure:
+
+**Paragraph 1 - Strengths Alignment:**
+Highlight 2-3 specific skills/experiences from the candidate that directly align with job requirements. Use concrete examples from their background.
+
+**Paragraph 2 - Gap Analysis:**
+Honestly assess any skill gaps. For each gap:
+- Rate significance (critical vs. nice-to-have)
+- Estimate learning curve (weeks/months)
+- Note any transferable skills that could help bridge the gap
+
+**Paragraph 3 - Application Strategy:**
+Provide specific recommendations:
+- If score >= 70%: Emphasize tailoring resume to highlight matching skills
+- If score 50-69%: Suggest addressing gaps in cover letter, mention learning initiatives
+- If score < 50%: Recommend skill development path before applying OR suggest similar roles that better match current profile
+
+**Paragraph 4 - Quick Wins (if applicable):**
+Identify 1-2 skills that could be quickly acquired (< 1 month) to significantly improve candidacy.
+
+Be specific, use the candidate's actual skills, and provide actionable next steps.`
 
   try {
-    const response = await callOpenRouter([{ role: "user", content: prompt }])
+    const response = await callOpenRouter([
+      { role: "system", content: systemPrompt },
+      { role: "user", content: prompt }
+    ])
 
     return response || "Unable to generate explanation."
   } catch {
