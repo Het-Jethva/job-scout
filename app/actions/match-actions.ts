@@ -3,7 +3,9 @@
 import { db } from "@/lib/db"
 import { requireAuth } from "@/lib/auth-utils"
 import { analyzeMatch } from "@/lib/services/matching-engine"
-import { extractResumeData, generateEmbedding } from "@/lib/services/openrouter"
+import { generateEmbedding } from "@/lib/services/openrouter"
+import { resolveResumeAnalysis } from "@/lib/domains/resume/analysis"
+import { findActiveResumeByUserId } from "@/lib/domains/resume/repository"
 import { jobIdSchema } from "@/lib/validations"
 import { revalidatePath } from "next/cache"
 import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
@@ -27,12 +29,7 @@ export async function calculateJobMatch(jobId: string) {
   }
 
   // Get user's active resume
-  const resume = await db.resume.findFirst({
-    where: {
-      userId: session.user.id,
-      isActive: true,
-    },
-  })
+  const resume = await findActiveResumeByUserId(session.user.id)
 
   if (!resume) {
     return { success: false, error: "No active resume found" }
@@ -112,15 +109,10 @@ export async function calculateJobMatch(jobId: string) {
       `
     }
 
-    // Extract resume analysis
-    let resumeAnalysis: Awaited<ReturnType<typeof extractResumeData>>
-    if (resume.parsedData && typeof resume.parsedData === "object") {
-      resumeAnalysis = resume.parsedData as unknown as Awaited<
-        ReturnType<typeof extractResumeData>
-      >
-    } else {
-      resumeAnalysis = await extractResumeData(resume.rawText)
-    }
+    const resumeAnalysis = await resolveResumeAnalysis(
+      resume.rawText,
+      resume.parsedData
+    )
 
     // Perform match analysis
     const matchResult = await analyzeMatch(
@@ -201,13 +193,7 @@ export async function getJobMatch(jobId: string) {
 
   const session = await requireAuth()
 
-  const resume = await db.resume.findFirst({
-    where: {
-      userId: session.user.id,
-      isActive: true,
-    },
-    select: { id: true },
-  })
+  const resume = await findActiveResumeByUserId(session.user.id)
 
   if (!resume) {
     return null
@@ -268,13 +254,7 @@ export async function findSimilarJobs(options?: { limit?: number }) {
   const limit = options?.limit || 20
 
   // Get user's active resume
-  const resume = await db.resume.findFirst({
-    where: {
-      userId: session.user.id,
-      isActive: true,
-    },
-    select: { id: true },
-  })
+  const resume = await findActiveResumeByUserId(session.user.id)
 
   if (!resume) {
     return { jobs: [], message: "No active resume found" }
@@ -339,13 +319,7 @@ export async function calculateBatchMatches(limit = 10) {
   const session = await requireAuth()
 
   // Ensure user has an active resume with embedding
-  const resume = await db.resume.findFirst({
-    where: {
-      userId: session.user.id,
-      isActive: true,
-    },
-    select: { id: true, rawText: true },
-  })
+  const resume = await findActiveResumeByUserId(session.user.id)
 
   if (!resume) {
     return []

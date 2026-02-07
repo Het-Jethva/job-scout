@@ -141,16 +141,17 @@ export function TailorButton({ jobId, hasExisting }: TailorButtonProps) {
 
 interface CopyButtonProps {
   content: string
+  successMessage?: string
 }
 
-export function CopyButton({ content }: CopyButtonProps) {
+export function CopyButton({ content, successMessage }: CopyButtonProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content)
       setCopied(true)
-      toast.success("Copied to clipboard!")
+      toast.success(successMessage || "Copied to clipboard!")
       setTimeout(() => setCopied(false), 2000)
     } catch {
       toast.error("Failed to copy")
@@ -202,54 +203,30 @@ export function CopyButton({ content }: CopyButtonProps) {
 }
 
 interface DownloadButtonProps {
-  content: {
-    summary?: string
-    skills?: string[]
-    experience?: Array<{ title: string; company: string; description: string }>
-  }
+  jobId: string
   filename: string
+  format?: "pdf" | "latex"
 }
 
-export function DownloadButton({ content, filename }: DownloadButtonProps) {
+export function DownloadButton({
+  jobId,
+  filename,
+  format = "pdf",
+}: DownloadButtonProps) {
   const [downloading, setDownloading] = useState(false)
 
   const handleDownload = () => {
     setDownloading(true)
-
-    // Format content as readable text
-    let text = "TAILORED RESUME\n"
-    text += "=".repeat(50) + "\n\n"
-
-    if (content.summary) {
-      text += "PROFESSIONAL SUMMARY\n"
-      text += "-".repeat(30) + "\n"
-      text += content.summary + "\n\n"
-    }
-
-    if (content.skills?.length) {
-      text += "SKILLS\n"
-      text += "-".repeat(30) + "\n"
-      text += content.skills.join(" • ") + "\n\n"
-    }
-
-    if (content.experience?.length) {
-      text += "EXPERIENCE\n"
-      text += "-".repeat(30) + "\n"
-      content.experience.forEach((exp) => {
-        text += `\n${exp.title}\n`
-        text += `${exp.company}\n`
-        text += `${exp.description}\n`
-      })
-    }
-
-    const blob = new Blob([text], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success("Downloaded!")
+    const encodedJobId = encodeURIComponent(jobId)
+    const encodedFileName = encodeURIComponent(filename)
+    const endpoint = format === "latex" ? "latex" : "pdf"
+    const downloadUrl = `/api/tailor/${encodedJobId}/${endpoint}?filename=${encodedFileName}`
+    window.location.assign(downloadUrl)
+    toast.success(
+      format === "latex"
+        ? "Preparing LaTeX download..."
+        : "Preparing PDF download..."
+    )
 
     setTimeout(() => setDownloading(false), 1000)
   }
@@ -272,7 +249,7 @@ export function DownloadButton({ content, filename }: DownloadButtonProps) {
                 className="flex items-center"
               >
                 <SuccessCheckmark className="h-4 w-4 mr-2" />
-                Downloaded
+                {format === "latex" ? "Exported .tex" : "Downloaded"}
               </motion.div>
             ) : (
               <motion.div
@@ -296,7 +273,7 @@ export function DownloadButton({ content, filename }: DownloadButtonProps) {
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                   />
                 </motion.svg>
-                Download
+                {format === "latex" ? "Download .tex" : "Download PDF"}
               </motion.div>
             )}
           </AnimatePresence>

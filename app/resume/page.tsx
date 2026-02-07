@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 import { requireAuth } from "@/lib/auth-utils"
 import { getUserResumes, getActiveResume } from "@/app/actions/resume-actions"
+import { parseStoredResumeAnalysis } from "@/lib/domains/resume/analysis"
 import {
   Card,
   CardContent,
@@ -21,23 +22,7 @@ async function ResumeContent() {
     getActiveResume(),
   ])
 
-  const parsedData = activeResume?.parsedData as {
-    skills?: Array<{ name: string; category: string; level?: string }>
-    experience?: Array<{
-      title: string
-      company: string
-      duration: string
-      responsibilities: string[]
-    }>
-    education?: Array<{
-      degree: string
-      institution: string
-      year: string
-      field: string
-    }>
-    summary?: string
-    yearsOfExperience?: number
-  } | null
+  const parsedData = parseStoredResumeAnalysis(activeResume?.parsedData)
 
   return (
     <div className="space-y-8">

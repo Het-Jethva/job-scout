@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation"
 import { getJob } from "@/app/actions/job-actions"
 import { getActiveResume } from "@/app/actions/resume-actions"
 import { getTailoredResume } from "@/app/actions/tailor-actions"
+import { parseStoredResumeAnalysis } from "@/lib/domains/resume/analysis"
+import { mapTailoredResumeToContent } from "@/lib/domains/tailor/presentation"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -18,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Markdown } from "@/components/ui/markdown"
 import { TailorButton, DownloadButton, CopyButton } from "./components"
+import { buildTailoredResumeLatexSource } from "@/lib/services/latex-resume"
 
 interface TailorPageProps {
   params: Promise<{ jobId: string }>
@@ -38,54 +41,49 @@ async function TailorContent({ jobId }: { jobId: string }) {
 
   const existingTailored = await getTailoredResume(jobId)
 
-  // Parse original resume data
-  let originalData: {
-    skills?: string[]
-    experience?: Array<{ title: string; company: string; description: string }>
-    summary?: string
-  } = {}
+  const originalAnalysis = parseStoredResumeAnalysis(activeResume.parsedData)
 
-  if (activeResume.parsedData) {
-    try {
-      originalData = JSON.parse(activeResume.parsedData as string)
-    } catch {}
+  const originalData = {
+    skills: originalAnalysis?.skills.map((skill) => skill.name) ?? [],
+    experience:
+      originalAnalysis?.experience.map((experience) => ({
+        title: experience.title,
+        company: experience.company,
+        description: experience.responsibilities.join("\n"),
+      })) ?? [],
+    summary: originalAnalysis?.summary ?? "",
   }
 
-  // Parse tailored content from the changes field
-  let tailoredContent: {
-    summary?: string
-    skills?: string[]
-    experience?: Array<{ title: string; company: string; description: string }>
-    changes?: Array<{
-      section: string
-      original: string
-      tailored: string
-      reason: string
-    }>
-    atsScore?: number
-    keywords?: string[]
-  } = {}
+  const tailoredContent = existingTailored
+    ? mapTailoredResumeToContent({
+        optimizedText: existingTailored.optimizedText,
+        changes: existingTailored.changes,
+        keywords: existingTailored.keywords,
+        atsScore: existingTailored.atsScore,
+      })
+    : {
+        summary: "",
+        skills: [],
+        experience: [],
+        changes: [],
+        keywords: [],
+        atsScore: undefined,
+      }
 
-  if (existingTailored) {
-    tailoredContent = {
-      summary: existingTailored.optimizedText,
-      keywords: existingTailored.keywords,
-      atsScore: existingTailored.atsScore ?? undefined,
-    }
-
-    // Parse changes if it exists
-    if (existingTailored.changes) {
-      try {
-        const parsedChanges =
-          typeof existingTailored.changes === "string"
-            ? JSON.parse(existingTailored.changes)
-            : existingTailored.changes
-        tailoredContent.changes = Array.isArray(parsedChanges)
-          ? parsedChanges
-          : []
-      } catch {}
-    }
-  }
+  const tailoredLatexSource = existingTailored
+    ? buildTailoredResumeLatexSource({
+        jobTitle: job.title,
+        companyName: job.company,
+        summary: tailoredContent.summary,
+        sourceResumeText: activeResume.rawText,
+        keywords: tailoredContent.keywords,
+        changes: tailoredContent.changes.map((change) => ({
+          section: change.section,
+          tailored: change.tailored,
+          reason: change.reason,
+        })),
+      })
+    : ""
 
   return (
     <div className="container py-8">
@@ -250,24 +248,34 @@ async function TailorContent({ jobId }: { jobId: string }) {
                     </div>
                     <div className="flex gap-2">
                       <CopyButton
-                        content={JSON.stringify(tailoredContent, null, 2)}
+                        content={tailoredLatexSource}
+                        successMessage="LaTeX copied to clipboard!"
                       />
                       <DownloadButton
-                        content={tailoredContent}
+                        jobId={jobId}
                         filename={`resume-${job.company
                           .toLowerCase()
-                          .replace(/\s+/g, "-")}.txt`}
+                          .replace(/\s+/g, "-")}.pdf`}
+                        format="pdf"
+                      />
+                      <DownloadButton
+                        jobId={jobId}
+                        filename={`resume-${job.company
+                          .toLowerCase()
+                          .replace(/\s+/g, "-")}.tex`}
+                        format="latex"
                       />
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <Tabs defaultValue="summary">
-                    <TabsList className="grid w-full grid-cols-4">
+                    <TabsList className="grid w-full grid-cols-5">
                       <TabsTrigger value="summary">Summary</TabsTrigger>
                       <TabsTrigger value="skills">Skills</TabsTrigger>
                       <TabsTrigger value="experience">Experience</TabsTrigger>
                       <TabsTrigger value="changes">Changes</TabsTrigger>
+                      <TabsTrigger value="latex">LaTeX</TabsTrigger>
                     </TabsList>
 
                     <TabsContent
@@ -312,21 +320,23 @@ async function TailorContent({ jobId }: { jobId: string }) {
                             Prioritized Skills (Ordered by relevance)
                           </h4>
                           <div className="flex flex-wrap gap-2">
-                            {tailoredContent.skills?.map((skill, i) => (
-                              <Badge
-                                key={skill}
-                                variant={i < 5 ? "default" : "secondary"}
-                              >
-                                {skill}
-                              </Badge>
-                            )) || (
+                            {tailoredContent.skills.length > 0 ? (
+                              tailoredContent.skills.map((skill, i) => (
+                                <Badge
+                                  key={skill}
+                                  variant={i < 5 ? "default" : "secondary"}
+                                >
+                                  {skill}
+                                </Badge>
+                              ))
+                            ) : (
                               <span className="text-muted-foreground">
                                 No skills tailored
                               </span>
                             )}
                           </div>
                         </div>
-                        {tailoredContent.keywords && (
+                        {tailoredContent.keywords.length > 0 && (
                           <div>
                             <h4 className="text-sm font-medium text-muted-foreground mb-2">
                               Keywords to Include
@@ -351,20 +361,22 @@ async function TailorContent({ jobId }: { jobId: string }) {
                       className="mt-4"
                     >
                       <div className="space-y-4">
-                        {tailoredContent.experience?.map((exp, i) => (
-                          <div
-                            key={i}
-                            className="p-4 bg-muted rounded-lg"
-                          >
-                            <h4 className="font-medium">{exp.title}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {exp.company}
-                            </p>
-                            <div className="mt-2 text-sm">
-                              <Markdown>{exp.description}</Markdown>
+                        {tailoredContent.experience.length > 0 ? (
+                          tailoredContent.experience.map((exp, i) => (
+                            <div
+                              key={i}
+                              className="p-4 bg-muted rounded-lg"
+                            >
+                              <h4 className="font-medium">{exp.title}</h4>
+                              <p className="text-sm text-muted-foreground">
+                                {exp.company}
+                              </p>
+                              <div className="mt-2 text-sm">
+                                <Markdown>{exp.description}</Markdown>
+                              </div>
                             </div>
-                          </div>
-                        )) || (
+                          ))
+                        ) : (
                           <span className="text-muted-foreground">
                             No experience tailored
                           </span>
@@ -377,43 +389,59 @@ async function TailorContent({ jobId }: { jobId: string }) {
                       className="mt-4"
                     >
                       <div className="space-y-4">
-                        {tailoredContent.changes?.map((change, i) => (
-                          <div
-                            key={i}
-                            className="border rounded-lg overflow-hidden"
-                          >
-                            <div className="bg-muted px-4 py-2 border-b">
-                              <span className="font-medium">
-                                {change.section}
-                              </span>
-                            </div>
-                            <div className="p-4 space-y-3">
-                              <div>
-                                <span className="text-xs text-muted-foreground">
-                                  Original:
+                        {tailoredContent.changes.length > 0 ? (
+                          tailoredContent.changes.map((change, i) => (
+                            <div
+                              key={i}
+                              className="border rounded-lg overflow-hidden"
+                            >
+                              <div className="bg-muted px-4 py-2 border-b">
+                                <span className="font-medium">
+                                  {change.section}
                                 </span>
-                                <div className="text-sm line-through text-muted-foreground">
-                                  <Markdown>{change.original}</Markdown>
+                              </div>
+                              <div className="p-4 space-y-3">
+                                <div>
+                                  <span className="text-xs text-muted-foreground">
+                                    Original:
+                                  </span>
+                                  <div className="text-sm line-through text-muted-foreground">
+                                    <Markdown>{change.original}</Markdown>
+                                  </div>
+                                </div>
+                                <div>
+                                  <span className="text-xs text-green-600">
+                                    Tailored:
+                                  </span>
+                                  <div className="text-sm">
+                                    <Markdown>{change.tailored}</Markdown>
+                                  </div>
+                                </div>
+                                <div className="text-xs text-muted-foreground italic">
+                                  Why: {change.reason}
                                 </div>
                               </div>
-                              <div>
-                                <span className="text-xs text-green-600">
-                                  Tailored:
-                                </span>
-                                <div className="text-sm">
-                                  <Markdown>{change.tailored}</Markdown>
-                                </div>
-                              </div>
-                              <div className="text-xs text-muted-foreground italic">
-                                Why: {change.reason}
-                              </div>
                             </div>
-                          </div>
-                        )) || (
+                          ))
+                        ) : (
                           <span className="text-muted-foreground">
                             No specific changes tracked
                           </span>
                         )}
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent
+                      value="latex"
+                      className="mt-4"
+                    >
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium text-muted-foreground">
+                          Generated LaTeX Source
+                        </h4>
+                        <pre className="p-4 bg-muted rounded-lg overflow-x-auto text-xs leading-relaxed whitespace-pre-wrap break-words">
+                          {tailoredLatexSource}
+                        </pre>
                       </div>
                     </TabsContent>
                   </Tabs>
@@ -481,7 +509,7 @@ async function TailorContent({ jobId }: { jobId: string }) {
           </Card>
 
           {/* ATS Score */}
-          {existingTailored && tailoredContent.atsScore && (
+          {existingTailored && typeof tailoredContent.atsScore === "number" && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">ATS Score</CardTitle>

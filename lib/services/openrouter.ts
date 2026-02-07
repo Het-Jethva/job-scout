@@ -4,6 +4,12 @@
  */
 
 import { env } from "../env"
+import {
+  sanitizeTailoredInlineText,
+  sanitizeTailoredKeywords,
+  sanitizeTailoredResumeChanges,
+  sanitizeTailoredResumeText,
+} from "@/lib/services/tailored-resume-sanitizer"
 
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 const MODEL = "openai/gpt-oss-120b" // Free model
@@ -78,7 +84,8 @@ function isRetryableError(error: Error, statusCode?: number): boolean {
 async function callOpenRouter(
   messages: OpenRouterMessage[],
   jsonMode: boolean = false,
-  maxRetries: number = 3
+  maxRetries: number = 3,
+  temperature: number = 0.7
 ): Promise<string> {
   // Check circuit breaker
   if (circuitBreaker.isOpen) {
@@ -121,7 +128,7 @@ async function callOpenRouter(
         body: JSON.stringify({
           model: MODEL,
           messages,
-          temperature: 0.7,
+          temperature,
           max_tokens: 4096,
           ...(jsonMode && { response_format: { type: "json_object" } }),
         }),
@@ -235,6 +242,18 @@ function parseJsonResponse<T>(text: string): T {
   try {
     return JSON.parse(cleaned) as T
   } catch (parseError) {
+    const objectStart = cleaned.indexOf("{")
+    const objectEnd = cleaned.lastIndexOf("}")
+
+    if (objectStart !== -1 && objectEnd > objectStart) {
+      const candidate = cleaned.slice(objectStart, objectEnd + 1)
+      try {
+        return JSON.parse(candidate) as T
+      } catch {
+        // Fall through to the original parse error below.
+      }
+    }
+
     console.error("JSON parse error. Response text:", cleaned.substring(0, 500))
     throw new Error(
       `Failed to parse JSON response: ${parseError instanceof Error ? parseError.message : String(parseError)}`
@@ -599,6 +618,45 @@ export interface TailoredResumeResult {
   summary: string
 }
 
+function clampAtsScore(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+
+  return Math.max(0, Math.min(100, Math.round(value)))
+}
+
+function sanitizeTailoredResumeResult(
+  result: TailoredResumeResult
+): TailoredResumeResult {
+  const optimizedText =
+    sanitizeTailoredResumeText(result.optimizedText || "") ||
+    (result.optimizedText || "").trim()
+  const rawChanges = Array.isArray(result.changes) ? result.changes : []
+  const rawKeywords = Array.isArray(result.addedKeywords)
+    ? result.addedKeywords
+    : []
+
+  const changes = sanitizeTailoredResumeChanges(rawChanges)
+    .map((change) => ({
+      section: change.section || "General",
+      original: change.original || "",
+      modified: change.modified || "",
+      reason: change.reason || "Improved clarity and relevance",
+    }))
+    .filter((change) => change.modified.length > 0)
+
+  return {
+    optimizedText,
+    changes,
+    addedKeywords: sanitizeTailoredKeywords(rawKeywords),
+    atsScore: clampAtsScore(result.atsScore),
+    summary:
+      sanitizeTailoredInlineText(result.summary || "") ||
+      "Optimized resume content while preserving factual accuracy.",
+  }
+}
+
 /**
  * Tailor resume for a specific job while maintaining factual accuracy
  */
@@ -618,6 +676,9 @@ CRITICAL RULES:
 2. NEVER add skills the candidate doesn't have
 3. ONLY reorganize, rephrase, and emphasize EXISTING content
 4. Optimize keyword placement for ATS systems
+5. Preserve the original resume structure and section order whenever possible
+6. Keep the name/contact header intact unless fixing obvious formatting issues
+7. Put each section heading on its own line; never merge heading and body in one line
 
 ORIGINAL RESUME:
 ${originalResumeText}
@@ -635,7 +696,12 @@ Required Skills:
 ${requiredSkills.join(", ")}
 
 Respond with a JSON object containing:
-- optimizedText: the complete optimized resume text
+- optimizedText: the complete optimized resume in clean Markdown format, using this exact structure when data exists:
+  - optional first line: candidate name
+  - optional second line: contact line (email | phone | linkedin | github)
+  - section headings as "## Professional Summary", "## Technical Skills", "## Experience", "## Projects", "## Education", "## Leadership & Activities"
+  - bullet points must start with "-"
+  - no prose outside the resume, no placeholders, no wrapper titles like "Tailored Resume", no signatures, no encoded tokens
 - changes: array of {section, original, modified, reason}
 - addedKeywords: array of keywords emphasized
 - atsScore: estimated ATS score 0-100
@@ -649,10 +715,14 @@ Respond with valid JSON only.`
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      true
+      true,
+      3,
+      0.2
     )
 
-    return parseJsonResponse<TailoredResumeResult>(response)
+    return sanitizeTailoredResumeResult(
+      parseJsonResponse<TailoredResumeResult>(response)
+    )
   } catch (error) {
     const message = (error as Error)?.message || "Failed to tailor resume"
 
