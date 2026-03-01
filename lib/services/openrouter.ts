@@ -413,6 +413,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   // This is a fallback since OpenRouter doesn't provide embeddings
   const words = text
     .toLowerCase()
+    .replace(/[^a-z0-9+#\s]/g, " ")
     .split(/\W+/)
     .filter((w) => w.length > 2)
   const wordFreq = new Map<string, number>()
@@ -423,6 +424,8 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
   // Create a fixed-size vector using hash-based projection
   const vector: number[] = new Array(768).fill(0)
+
+  const trigramCache = new Map<string, Set<string>>()
 
   for (const [word, freq] of wordFreq) {
     // Simple hash function to map words to vector positions
@@ -438,6 +441,32 @@ export async function generateEmbedding(text: string): Promise<number[]> {
     ]
     for (const pos of positions) {
       vector[pos] += freq / words.length
+    }
+
+    if (word.length >= 5) {
+      let trigrams = trigramCache.get(word)
+      if (!trigrams) {
+        trigrams = new Set()
+        for (let i = 0; i <= word.length - 3; i++) {
+          trigrams.add(word.slice(i, i + 3))
+        }
+        trigramCache.set(word, trigrams)
+      }
+
+      for (const trigram of trigrams) {
+        let trigramHash = 0
+        for (let i = 0; i < trigram.length; i++) {
+          trigramHash = (trigramHash << 5) - trigramHash + trigram.charCodeAt(i)
+          trigramHash = trigramHash & trigramHash
+        }
+        const trigramPositions = [
+          Math.abs(trigramHash) % 768,
+          Math.abs(trigramHash * 19) % 768,
+        ]
+        for (const pos of trigramPositions) {
+          vector[pos] += (freq / words.length) * 0.25
+        }
+      }
     }
   }
 
@@ -523,6 +552,8 @@ Provide complete, accurate JSON response only.`
       requirements: string[]
       niceToHave: string[]
       experienceLevel: string
+      yearsRequired?: number
+      educationRequired?: string
     }>(response)
   } catch {
     throw new Error("Failed to analyze job description")

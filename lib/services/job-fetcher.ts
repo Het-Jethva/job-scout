@@ -1,9 +1,17 @@
 import { sanitizeText } from "@/lib/utils"
 
 // Unified job listing interface
+export type JobSource =
+  | "themuse"
+  | "remotive"
+  | "remoteok"
+  | "arbeitnow"
+  | "himalayas"
+  | "jobicy"
+
 export interface JobListing {
   externalId: string
-  source: "themuse" | "remotive" | "remoteok"
+  source: JobSource
   title: string
   company: string
   companyLogo?: string
@@ -25,6 +33,129 @@ const rateLimiters: Record<string, { lastCall: number; minInterval: number }> =
   themuse: { lastCall: 0, minInterval: 1000 }, // 1 request per second
   remotive: { lastCall: 0, minInterval: 15000 }, // Very limited, be conservative
   remoteok: { lastCall: 0, minInterval: 2000 }, // 1 request per 2 seconds
+  arbeitnow: { lastCall: 0, minInterval: 1000 },
+  himalayas: { lastCall: 0, minInterval: 1200 },
+  jobicy: { lastCall: 0, minInterval: 2000 },
+}
+
+const HTML_ENTITY_MAP: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": "\"",
+  "&#39;": "'",
+  "&nbsp;": " ",
+}
+
+function decodeHtmlEntities(value: string): string {
+  if (!value) return ""
+
+  return value.replace(
+    /&(#x?[0-9a-fA-F]+|amp|lt|gt|quot|#39|nbsp);/g,
+    (match, entity) => {
+      if (HTML_ENTITY_MAP[match]) return HTML_ENTITY_MAP[match]
+
+      if (entity.startsWith("#x")) {
+        const code = parseInt(entity.slice(2), 16)
+        return Number.isFinite(code) ? String.fromCharCode(code) : match
+      }
+
+      if (entity.startsWith("#")) {
+        const code = parseInt(entity.slice(1), 10)
+        return Number.isFinite(code) ? String.fromCharCode(code) : match
+      }
+
+      return match
+    }
+  )
+}
+
+function decodeHtmlEntitiesDeep(value: string, passes = 2): string {
+  let decoded = value
+  for (let i = 0; i < passes; i += 1) {
+    const next = decodeHtmlEntities(decoded)
+    if (next === decoded) break
+    decoded = next
+  }
+  return decoded
+}
+
+function compactUnique(values: Array<string | null | undefined>): string[] {
+  const deduped = new Map<string, string>()
+
+  for (const raw of values) {
+    const trimmed = (raw || "").trim()
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (!deduped.has(key)) {
+      deduped.set(key, trimmed)
+    }
+  }
+
+  return [...deduped.values()]
+}
+
+function appendCategoryLabels(
+  categories: string[],
+  source: JobSource
+): string[] {
+  if (categories.length === 0) {
+    return categories
+  }
+
+  if (source !== "themuse" && source !== "remotive") {
+    return compactUnique(categories)
+  }
+
+  const normalized = categories.map((category) => category.toLowerCase())
+  const labels: string[] = []
+
+  for (const entry of Object.values(JOB_CATEGORIES)) {
+    const candidate =
+      source === "themuse" ? entry.themuse : entry.remotive
+    if (normalized.includes(candidate.toLowerCase())) {
+      labels.push(entry.label)
+    }
+  }
+
+  return compactUnique([...categories, ...labels])
+}
+
+function normalizeSalaryRange(input: {
+  min?: number | null
+  max?: number | null
+  currency?: string | null
+  period?: string | null
+}): { salary?: string; salaryMin?: number; salaryMax?: number } {
+  const min =
+    typeof input.min === "number" && Number.isFinite(input.min)
+      ? Math.round(input.min)
+      : undefined
+  const max =
+    typeof input.max === "number" && Number.isFinite(input.max)
+      ? Math.round(input.max)
+      : undefined
+
+  if (!min && !max) {
+    return { salary: undefined, salaryMin: undefined, salaryMax: undefined }
+  }
+
+  const currency = (input.currency || "").trim().toUpperCase()
+  const currencyLabel = currency ? `${currency} ` : ""
+  const periodLabel = (input.period || "").trim()
+  const suffix = periodLabel ? `/${periodLabel}` : ""
+
+  const salaryText = min && max
+    ? `${currencyLabel}${min}-${max}${suffix}`
+    : min
+      ? `${currencyLabel}${min}+${suffix}`
+      : `${currencyLabel}${max}${suffix}`
+
+  return {
+    salary: salaryText.trim(),
+    salaryMin: min,
+    salaryMax: max,
+  }
 }
 
 async function rateLimit(source: string): Promise<void> {
@@ -105,7 +236,10 @@ export async function fetchTheMuseJobs(options: {
               l.name.toLowerCase().includes("flexible")
           ),
           description: sanitizeText((job.contents as string) || ""),
-          categories: categories.map((c) => c.name),
+          categories: appendCategoryLabels(
+            categories.map((c) => c.name),
+            "themuse"
+          ),
           applyUrl: (job.refs as { landing_page?: string })?.landing_page || "",
           publishedAt: new Date((job.publication_date as string) || Date.now()),
         }
@@ -162,7 +296,10 @@ export async function fetchRemotiveJobs(options: {
         isRemote: true, // All Remotive jobs are remote
         salary: (job.salary as string) || undefined,
         description: sanitizeText((job.description as string) || ""),
-        categories: [(job.category as string) || "Other"],
+        categories: appendCategoryLabels(
+          [(job.category as string) || "Other"],
+          "remotive"
+        ),
         applyUrl: (job.url as string) || "",
         publishedAt: new Date((job.publication_date as string) || Date.now()),
       }
@@ -240,22 +377,263 @@ export async function fetchRemoteOKJobs(): Promise<JobListing[]> {
 }
 
 /**
+ * Fetch jobs from Arbeitnow API (global, includes remote flag)
+ * Free, no auth. 100 results per page.
+ */
+export async function fetchArbeitnowJobs(options?: {
+  page?: number
+  search?: string
+}): Promise<JobListing[]> {
+  await rateLimit("arbeitnow")
+
+  const params = new URLSearchParams({
+    page: String(options?.page || 1),
+  })
+  if (options?.search) {
+    params.set("search", options.search)
+  }
+
+  try {
+    const response = await fetch(
+      `https://www.arbeitnow.com/api/job-board-api?${params}`,
+      {
+        headers: { Accept: "application/json" },
+        next: { revalidate: 3600 },
+      }
+    )
+
+    if (!response.ok) {
+      return []
+    }
+
+    const data = await response.json()
+    const jobs = Array.isArray(data.data) ? data.data : []
+
+    return jobs.map((job: Record<string, unknown>): JobListing => {
+      const title = sanitizeText(
+        decodeHtmlEntitiesDeep((job.title as string) || "Unknown Title")
+      )
+      const company = sanitizeText(
+        decodeHtmlEntitiesDeep((job.company_name as string) || "Unknown Company")
+      )
+      const description = sanitizeText(
+        decodeHtmlEntitiesDeep((job.description as string) || "")
+      )
+      const location = sanitizeText((job.location as string) || "Various")
+      const isRemote = Boolean(job.remote) || /remote/i.test(location)
+      const jobTypes = (job.job_types as string[]) || []
+      const tags = (job.tags as string[]) || []
+      const createdAt = typeof job.created_at === "number" ? job.created_at : null
+
+      return {
+        externalId: `arbeitnow_${job.slug || job.url || title}`,
+        source: "arbeitnow",
+        title,
+        company,
+        companyLogo: undefined,
+        location,
+        jobType: jobTypes.length > 0 ? jobTypes.join(", ") : undefined,
+        isRemote,
+        description,
+        categories: compactUnique([...tags, ...jobTypes]),
+        applyUrl: (job.url as string) || "",
+        publishedAt: new Date(
+          createdAt ? createdAt * 1000 : Date.now()
+        ),
+      }
+    })
+  } catch (_error) {
+    return []
+  }
+}
+
+/**
+ * Fetch jobs from Himalayas API (remote-focused)
+ * Free, no auth.
+ */
+export async function fetchHimalayasJobs(options?: {
+  limit?: number
+  offset?: number
+}): Promise<JobListing[]> {
+  await rateLimit("himalayas")
+
+  const params = new URLSearchParams({
+    limit: String(options?.limit || 50),
+    offset: String(options?.offset || 0),
+  })
+
+  try {
+    const response = await fetch(
+      `https://himalayas.app/jobs/api?${params}`,
+      {
+        headers: { Accept: "application/json" },
+        next: { revalidate: 3600 },
+      }
+    )
+
+    if (!response.ok) {
+      return []
+    }
+
+    const data = await response.json()
+    const jobs = Array.isArray(data.jobs) ? data.jobs : []
+
+    return jobs.map((job: Record<string, unknown>): JobListing => {
+      const title = sanitizeText((job.title as string) || "Unknown Title")
+      const company = sanitizeText((job.companyName as string) || "Unknown Company")
+      const description = sanitizeText((job.description as string) || "")
+      const locationRestrictions = (job.locationRestrictions as string[]) || []
+      const location =
+        locationRestrictions.length > 0
+          ? locationRestrictions.join(", ")
+          : "Worldwide"
+
+      const categories = compactUnique([
+        ...(job.categories as string[] | undefined) || [],
+        ...(job.parentCategories as string[] | undefined) || [],
+        (job.employmentType as string | undefined) || "",
+      ])
+
+      const publishedAt =
+        typeof job.pubDate === "number"
+          ? new Date(job.pubDate * 1000)
+          : new Date((job.pubDate as string) || Date.now())
+
+      return {
+        externalId: `himalayas_${job.guid || job.applicationLink || title}`,
+        source: "himalayas",
+        title,
+        company,
+        companyLogo: (job.companyLogo as string) || undefined,
+        location,
+        jobType: (job.employmentType as string) || undefined,
+        isRemote: true,
+        salary: undefined,
+        salaryMin: undefined,
+        salaryMax: undefined,
+        description,
+        categories: compactUnique(categories),
+        applyUrl: (job.applicationLink as string) || "",
+        publishedAt,
+      }
+    })
+  } catch (_error) {
+    return []
+  }
+}
+
+/**
+ * Fetch jobs from Jobicy API (remote jobs)
+ * Free, no auth.
+ */
+export async function fetchJobicyJobs(options?: {
+  count?: number
+}): Promise<JobListing[]> {
+  await rateLimit("jobicy")
+
+  const params = new URLSearchParams({
+    count: String(options?.count || 50),
+  })
+
+  try {
+    const response = await fetch(
+      `https://jobicy.com/api/v2/remote-jobs?${params}`,
+      {
+        headers: { Accept: "application/json" },
+        next: { revalidate: 3600 },
+      }
+    )
+
+    if (!response.ok) {
+      return []
+    }
+
+    const data = await response.json()
+    const jobs = Array.isArray(data.jobs) ? data.jobs : []
+
+    return jobs.map((job: Record<string, unknown>): JobListing => {
+      const title = sanitizeText(
+        decodeHtmlEntitiesDeep((job.jobTitle as string) || "Unknown Title")
+      )
+      const company = sanitizeText(
+        decodeHtmlEntitiesDeep((job.companyName as string) || "Unknown Company")
+      )
+      const description = sanitizeText(
+        decodeHtmlEntitiesDeep(
+          (job.jobDescription as string) || (job.jobExcerpt as string) || ""
+        )
+      )
+      const location = sanitizeText((job.jobGeo as string) || "Remote")
+      const jobTypes = (job.jobType as string[]) || []
+      const industries = (job.jobIndustry as string[]) || []
+      const categories = compactUnique([
+        ...industries,
+        ...jobTypes,
+        (job.jobLevel as string | undefined) || "",
+      ])
+
+      const salary = normalizeSalaryRange({
+        min: job.salaryMin as number | null,
+        max: job.salaryMax as number | null,
+        currency: job.salaryCurrency as string | null,
+        period: job.salaryPeriod as string | null,
+      })
+
+      return {
+        externalId: `jobicy_${job.id || job.jobSlug || title}`,
+        source: "jobicy",
+        title,
+        company,
+        companyLogo: (job.companyLogo as string) || undefined,
+        location,
+        jobType: jobTypes.length > 0 ? jobTypes.join(", ") : undefined,
+        isRemote: true,
+        salary: salary.salary,
+        salaryMin: salary.salaryMin,
+        salaryMax: salary.salaryMax,
+        description,
+        categories: compactUnique(categories),
+        applyUrl: (job.url as string) || "",
+        publishedAt: new Date((job.pubDate as string) || Date.now()),
+      }
+    })
+  } catch (_error) {
+    return []
+  }
+}
+
+/**
  * Fetch jobs from all sources and deduplicate
  */
 export async function fetchAllJobs(options?: {
   category?: string
   search?: string
 }): Promise<JobListing[]> {
-  const [museJobs, remotiveJobs, remoteOkJobs] = await Promise.allSettled([
-    fetchTheMuseJobs({
-      category: options?.category,
-    }),
-    fetchRemotiveJobs({
-      category: options?.category,
-      search: options?.search,
-    }),
-    fetchRemoteOKJobs(),
-  ])
+  const categoryKey = (options?.category || "").toLowerCase().trim()
+  const categoryMapping = categoryKey
+    ? (JOB_CATEGORIES as Record<string, { themuse: string; remotive: string }>)[
+        categoryKey
+      ]
+    : null
+  const themuseCategory = categoryMapping?.themuse || options?.category
+  const remotiveCategory = categoryMapping?.remotive || options?.category
+
+  const [museJobs, remotiveJobs, remoteOkJobs, arbeitnowJobs, himalayasJobs, jobicyJobs] =
+    await Promise.allSettled([
+      fetchTheMuseJobs({
+        category: themuseCategory,
+      }),
+      fetchRemotiveJobs({
+        category: remotiveCategory,
+        search: options?.search,
+      }),
+      fetchRemoteOKJobs(),
+      fetchArbeitnowJobs({
+        search: options?.search,
+      }),
+      fetchHimalayasJobs(),
+      fetchJobicyJobs(),
+    ])
 
   const allJobs: JobListing[] = []
 
@@ -267,6 +645,15 @@ export async function fetchAllJobs(options?: {
   }
   if (remoteOkJobs.status === "fulfilled") {
     allJobs.push(...remoteOkJobs.value)
+  }
+  if (arbeitnowJobs.status === "fulfilled") {
+    allJobs.push(...arbeitnowJobs.value)
+  }
+  if (himalayasJobs.status === "fulfilled") {
+    allJobs.push(...himalayasJobs.value)
+  }
+  if (jobicyJobs.status === "fulfilled") {
+    allJobs.push(...jobicyJobs.value)
   }
 
   // Deduplicate by title + company

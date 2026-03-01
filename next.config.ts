@@ -36,15 +36,27 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "www.themuse.com",
       },
-      {
-        protocol: "https",
-        hostname: "*.themuse.com",
-      },
-      // Common CDN for company logos
-      {
-        protocol: "https",
-        hostname: "logo.clearbit.com",
-      },
+        {
+          protocol: "https",
+          hostname: "*.themuse.com",
+        },
+        {
+          protocol: "https",
+          hostname: "jobicy.com",
+        },
+        {
+          protocol: "https",
+          hostname: "*.jobicy.com",
+        },
+        {
+          protocol: "https",
+          hostname: "cdn-images.himalayas.app",
+        },
+        // Common CDN for company logos
+        {
+          protocol: "https",
+          hostname: "logo.clearbit.com",
+        },
     ],
   },
 
@@ -86,9 +98,9 @@ const nextConfig: NextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // Required for Next.js
               "style-src 'self' 'unsafe-inline'", // Required for styled components
-              "img-src 'self' data: https://*.supabase.co https://remotive.com https://*.remotive.com https://remoteok.com https://*.remoteok.com https://*.themuse.com https://logo.clearbit.com",
+              "img-src 'self' data: https://*.supabase.co https://remotive.com https://*.remotive.com https://remoteok.com https://*.remoteok.com https://*.themuse.com https://jobicy.com https://*.jobicy.com https://cdn-images.himalayas.app https://logo.clearbit.com",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co https://openrouter.ai https://remotive.com https://remoteok.com https://www.themuse.com",
+              "connect-src 'self' https://*.supabase.co https://openrouter.ai https://remotive.com https://remoteok.com https://www.themuse.com https://www.arbeitnow.com https://himalayas.app https://jobicy.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

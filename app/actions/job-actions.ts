@@ -7,7 +7,11 @@ import {
   fetchTheMuseJobs,
   fetchRemotiveJobs,
   fetchRemoteOKJobs,
+  fetchArbeitnowJobs,
+  fetchHimalayasJobs,
+  fetchJobicyJobs,
   type JobListing,
+  type JobSource,
 } from "@/lib/services/job-fetcher"
 import { generateEmbedding } from "@/lib/services/openrouter"
 import { revalidatePath } from "next/cache"
@@ -286,7 +290,7 @@ export async function getMatchedJobs(options?: { limit?: number }) {
  * Fetch fresh jobs from APIs (not stored)
  */
 export async function fetchFreshJobs(
-  source?: "themuse" | "remotive" | "remoteok"
+  source?: JobSource
 ): Promise<JobListing[]> {
   if (source === "themuse") {
     return fetchTheMuseJobs({})
@@ -296,6 +300,15 @@ export async function fetchFreshJobs(
   }
   if (source === "remoteok") {
     return fetchRemoteOKJobs()
+  }
+  if (source === "arbeitnow") {
+    return fetchArbeitnowJobs()
+  }
+  if (source === "himalayas") {
+    return fetchHimalayasJobs()
+  }
+  if (source === "jobicy") {
+    return fetchJobicyJobs()
   }
 
   return fetchAllJobs()

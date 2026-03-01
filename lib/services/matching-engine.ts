@@ -160,24 +160,45 @@ export function calculateMatchScore(
     return Math.round(similarityScore * 100)
   }
 
-  // Skill match component (60% weight)
+  // Skill match component (65% weight)
   const exactMatchWeight = 1.0
-  const partialMatchWeight = 0.5
+  const partialMatchWeight = 0.55
 
   const skillScore =
     (skillMatch.matched.length * exactMatchWeight +
       skillMatch.partial.length * partialMatchWeight) /
     totalJobSkills
 
-  // Semantic similarity component (40% weight)
+  // Semantic similarity component (35% weight)
   const semanticScore = similarityScore
 
-  // Combined score
-  const combinedScore = skillScore * 0.6 + semanticScore * 0.4
+  // Combined score with soft floor to avoid overly low scores
+  const combinedScore = skillScore * 0.65 + semanticScore * 0.35
 
-  // Scale to 0-100 with minimum of 10 (some relevance) and max of 100
-  return Math.min(100, Math.max(10, Math.round(combinedScore * 100)))
+  return Math.min(100, Math.max(5, Math.round(combinedScore * 100)))
 }
+
+function normalizeSkillName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+#]/g, "")
+    .trim()
+}
+
+function dedupeSkills(values: string[]): string[] {
+  const deduped = new Map<string, string>()
+  for (const value of values) {
+    const trimmed = value.trim()
+    if (!trimmed) continue
+    const key = normalizeSkillName(trimmed)
+    if (!key) continue
+    if (!deduped.has(key)) {
+      deduped.set(key, trimmed)
+    }
+  }
+  return [...deduped.values()]
+}
+
 
 /**
  * Full match analysis between resume and job
@@ -196,11 +217,22 @@ export async function analyzeMatch(
   const jobRequirements = await extractJobRequirements(jobDescription)
 
   // Match skills
-  const resumeSkillNames = resumeAnalysis.skills.map((s) => s.name)
-  const skillMatch = matchSkills(resumeSkillNames, jobRequirements.skills)
+  const resumeSkillNames = dedupeSkills(
+    resumeAnalysis.skills.map((s) => s.name)
+  )
+  const jobSkillNames = dedupeSkills(jobRequirements.skills)
+  const skillMatch = matchSkills(resumeSkillNames, jobSkillNames)
+
+  // Penalty for missing critical skills
+  const missingRatio =
+    jobSkillNames.length > 0
+      ? skillMatch.missing.length / jobSkillNames.length
+      : 0
 
   // Calculate overall score
-  const score = calculateMatchScore(skillMatch, similarityScore)
+  const baseScore = calculateMatchScore(skillMatch, similarityScore)
+  const penalty = Math.min(20, Math.round(missingRatio * 25))
+  const score = Math.max(0, baseScore - penalty)
 
   // Generate explanation
   const explanation = await generateMatchExplanation(
@@ -235,7 +267,7 @@ export async function processJobForMatching(jobDescription: string): Promise<{
 
   return {
     embedding,
-    skills: requirements.skills,
+    skills: dedupeSkills(requirements.skills),
     requirements: requirements.requirements,
   }
 }

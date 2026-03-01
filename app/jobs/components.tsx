@@ -19,16 +19,14 @@ import { toast } from "sonner"
 import { FadeIn, HoverScale } from "@/components/ui/motion"
 
 const CATEGORIES = [
-  "Software Engineering",
-  "Data Science",
-  "Product",
+  "Software Development",
+  "Data & Analytics",
+  "Product Management",
   "Design",
   "Marketing",
   "Sales",
-  "Customer Support",
-  "Operations",
-  "Finance",
-  "Human Resources",
+  "DevOps & SysAdmin",
+  "HR & Recruiting",
 ]
 
 export function JobFilters() {
