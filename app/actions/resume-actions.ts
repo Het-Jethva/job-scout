@@ -4,9 +4,21 @@ import { db } from "@/lib/db"
 import { requireAuth } from "@/lib/auth-utils"
 import { parseDocument } from "@/lib/services/document-parser"
 import { extractResumeData, generateEmbedding } from "@/lib/services/openrouter"
+import {
+  deleteResumeByIdForUser,
+  findActiveResumeByUserId,
+  findUserResumesByUserId,
+  setActiveResumeByIdForUser,
+} from "@/lib/domains/resume/repository"
+import { saveResumeEmbedding } from "@/lib/domains/shared/vector"
+import {
+  getErrorMessage,
+  getValidationErrorMessage,
+  revalidatePaths,
+} from "@/lib/action-utils"
 import { resumeUploadSchema, resumeIdSchema, skillIdSchema, skillsArraySchema, safeValidate } from "@/lib/validations"
-import { revalidatePath } from "next/cache"
 import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
+import { toPrismaJsonValue } from "@/lib/serialization"
 
 export interface UploadResumeResult {
   success: boolean
@@ -84,9 +96,6 @@ export async function processResumeUpload(
     // Generate embedding for semantic matching
     const embedding = await generateEmbedding(parsed.text)
 
-    // pgvector expects a bracketed list, not a Postgres array literal
-    const embeddingLiteral = `[${embedding.join(",")}]`
-
     // Use transaction to prevent race conditions when deactivating/creating resumes
     const resume = await db.$transaction(async (tx) => {
       // Deactivate previous resumes
@@ -104,10 +113,10 @@ export async function processResumeUpload(
           fileType,
           fileSize,
           rawText: parsed.text,
-          parsedData: JSON.parse(JSON.stringify(analysis)),
+          parsedData: toPrismaJsonValue(analysis),
           skills: analysis.skills.map((s) => s.name),
-          experience: JSON.parse(JSON.stringify(analysis.experience)),
-          education: JSON.parse(JSON.stringify(analysis.education)),
+          experience: toPrismaJsonValue(analysis.experience),
+          education: toPrismaJsonValue(analysis.education),
           isActive: true,
         },
       })
@@ -115,22 +124,15 @@ export async function processResumeUpload(
       return newResume
     })
 
-    // Store embedding using raw SQL (Prisma doesn't directly support vector type)
-    await db.$executeRaw`
-      UPDATE "Resume"
-      SET embedding = ${embeddingLiteral}::vector
-      WHERE id = ${resume.id}
-    `
+    await saveResumeEmbedding(resume.id, embedding)
 
-    revalidatePath("/resume")
-    revalidatePath("/dashboard")
+    revalidatePaths(["/resume", "/dashboard"])
 
     return { success: true, resumeId: resume.id }
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to process resume",
+      error: getErrorMessage(error, "Failed to process resume"),
     }
   }
 }
@@ -140,22 +142,7 @@ export async function processResumeUpload(
  */
 export async function getUserResumes() {
   const session = await requireAuth()
-
-  const resumes = await db.resume.findMany({
-    where: { userId: session.user.id },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      fileName: true,
-      fileUrl: true,
-      fileType: true,
-      skills: true,
-      isActive: true,
-      createdAt: true,
-    },
-  })
-
-  return resumes
+  return findUserResumesByUserId(session.user.id)
 }
 
 /**
@@ -163,15 +150,7 @@ export async function getUserResumes() {
  */
 export async function getActiveResume() {
   const session = await requireAuth()
-
-  const resume = await db.resume.findFirst({
-    where: {
-      userId: session.user.id,
-      isActive: true,
-    },
-  })
-
-  return resume
+  return findActiveResumeByUserId(session.user.id)
 }
 
 /**
@@ -187,15 +166,9 @@ export async function deleteResume(resumeId: string) {
   const session = await requireAuth()
 
   try {
-    await db.resume.delete({
-      where: {
-        id: resumeId,
-        userId: session.user.id,
-      },
-    })
+    await deleteResumeByIdForUser(resumeId, session.user.id)
 
-    revalidatePath("/resume")
-    revalidatePath("/dashboard")
+    revalidatePaths(["/resume", "/dashboard"])
 
     return { success: true }
   } catch {
@@ -216,26 +189,9 @@ export async function setActiveResume(resumeId: string) {
   const session = await requireAuth()
 
   try {
-    // Use transaction to prevent race conditions
-    await db.$transaction(async (tx) => {
-      // Deactivate all resumes
-      await tx.resume.updateMany({
-        where: { userId: session.user.id },
-        data: { isActive: false },
-      })
+    await setActiveResumeByIdForUser(resumeId, session.user.id)
 
-      // Activate the selected one
-      await tx.resume.update({
-        where: {
-          id: resumeId,
-          userId: session.user.id,
-        },
-        data: { isActive: true },
-      })
-    })
-
-    revalidatePath("/resume")
-    revalidatePath("/dashboard")
+    revalidatePaths(["/resume", "/dashboard"])
 
     return { success: true }
   } catch {
@@ -252,7 +208,10 @@ export async function addUserSkills(
   // Validate input
   const validation = skillsArraySchema.safeParse(skills)
   if (!validation.success) {
-    return { success: false, error: validation.error.issues[0]?.message || "Invalid skills data" }
+    return {
+      success: false,
+      error: getValidationErrorMessage(validation.error, "Invalid skills data"),
+    }
   }
 
   const session = await requireAuth()
@@ -280,7 +239,7 @@ export async function addUserSkills(
     )
   )
 
-  revalidatePath("/resume")
+  revalidatePaths(["/resume"])
   return results
 }
 
@@ -316,7 +275,7 @@ export async function removeUserSkill(skillId: string) {
       },
     })
 
-    revalidatePath("/resume")
+    revalidatePaths(["/resume"])
     return { success: true }
   } catch {
     return { success: false, error: "Failed to remove skill" }

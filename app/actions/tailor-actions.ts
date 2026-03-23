@@ -8,8 +8,11 @@ import {
   analyzeResumeATSUseCase,
   deleteTailoredResumeUseCase,
 } from "@/lib/domains/tailor/service"
+import {
+  getErrorMessage,
+  revalidatePaths,
+} from "@/lib/action-utils"
 import { jobIdSchema, tailoredResumeIdSchema } from "@/lib/validations"
-import { revalidatePath } from "next/cache"
 import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
 
 /**
@@ -34,7 +37,7 @@ export async function tailorResumeForJob(jobId: string) {
       userId: session.user.id,
       jobId: validation.data,
     })
-    revalidatePath(`/tailor/${validation.data}`)
+    revalidatePaths([`/tailor/${validation.data}`])
 
     return {
       success: true,
@@ -43,7 +46,7 @@ export async function tailorResumeForJob(jobId: string) {
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to tailor resume",
+      error: getErrorMessage(error, "Failed to tailor resume"),
     }
   }
 }
@@ -87,8 +90,7 @@ export async function analyzeResumeATS() {
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to analyze resume",
+      error: getErrorMessage(error, "Failed to analyze resume"),
     }
   }
 }
@@ -110,13 +112,12 @@ export async function deleteTailoredResume(tailoredResumeId: string) {
       tailoredResumeId: validation.data,
     })
 
-    revalidatePath("/resume")
+    revalidatePaths(["/resume"])
     return { success: true }
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to delete tailored resume",
+      error: getErrorMessage(error, "Failed to delete tailored resume"),
     }
   }
 }

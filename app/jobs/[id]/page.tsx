@@ -1,9 +1,11 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { getJob } from "@/app/actions/job-actions"
-import { getActiveResume } from "@/app/actions/resume-actions"
-import { getJobMatch } from "@/app/actions/match-actions"
+import { requireAuth } from "@/lib/auth-utils"
+import { findJobById } from "@/lib/domains/job/repository"
+import { parseMatchSkillBreakdown } from "@/lib/domains/match/presentation"
+import { findMatchByResumeAndJob } from "@/lib/domains/match/repository"
+import { findActiveResumeByUserId } from "@/lib/domains/resume/repository"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -25,14 +27,17 @@ interface JobDetailPageProps {
 }
 
 async function JobContent({ jobId }: { jobId: string }) {
-  const job = await getJob(jobId)
+  const job = await findJobById(jobId)
 
   if (!job) {
     notFound()
   }
 
-  const activeResume = await getActiveResume()
-  const existingMatch = activeResume ? await getJobMatch(jobId) : null
+  const session = await requireAuth()
+  const activeResume = await findActiveResumeByUserId(session.user.id)
+  const existingMatch = activeResume
+    ? await findMatchByResumeAndJob(activeResume.id, jobId)
+    : null
 
   // Requirements are stored as String[]
   const requirements = job.requirements || []
@@ -145,9 +150,9 @@ async function JobContent({ jobId }: { jobId: string }) {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  {requirements.map((req: string, i: number) => (
+                  {requirements.map((req: string) => (
                     <li
-                      key={i}
+                      key={req}
                       className="flex items-start gap-2"
                     >
                       <svg
@@ -259,34 +264,38 @@ async function JobContent({ jobId }: { jobId: string }) {
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium">Skill Breakdown</h4>
                     {(() => {
-                      try {
-                        const skills =
-                          typeof existingMatch.skillMatches === "string"
-                            ? JSON.parse(existingMatch.skillMatches)
-                            : existingMatch.skillMatches
-                        return (
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="text-center p-2 bg-green-50 dark:bg-green-950 rounded">
-                              <div className="font-semibold text-green-600 dark:text-green-400">
-                                {skills.matchedSkills?.length || 0}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Matched
-                              </div>
+                      const skills = parseMatchSkillBreakdown(
+                        existingMatch.skillMatches
+                      )
+
+                      return (
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="text-center p-2 bg-green-50 dark:bg-green-950 rounded">
+                            <div className="font-semibold text-green-600 dark:text-green-400">
+                              {skills.matched.length}
                             </div>
-                            <div className="text-center p-2 bg-red-50 dark:bg-red-950 rounded">
-                              <div className="font-semibold text-red-600 dark:text-red-400">
-                                {skills.missingSkills?.length || 0}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Missing
-                              </div>
+                            <div className="text-xs text-muted-foreground">
+                              Matched
                             </div>
                           </div>
-                        )
-                      } catch {
-                        return null
-                      }
+                          <div className="text-center p-2 bg-blue-50 dark:bg-blue-950 rounded">
+                            <div className="font-semibold text-blue-600 dark:text-blue-400">
+                              {skills.partial.length}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Partial
+                            </div>
+                          </div>
+                          <div className="text-center p-2 bg-red-50 dark:bg-red-950 rounded">
+                            <div className="font-semibold text-red-600 dark:text-red-400">
+                              {skills.missing.length}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Missing
+                            </div>
+                          </div>
+                        </div>
+                      )
                     })()}
                   </div>
                 )}

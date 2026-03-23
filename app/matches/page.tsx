@@ -1,7 +1,9 @@
 import { Suspense } from "react"
 import Link from "next/link"
-import { getUserMatches } from "@/app/actions/match-actions"
-import { getActiveResume } from "@/app/actions/resume-actions"
+import { requireAuth } from "@/lib/auth-utils"
+import { parseMatchSkillBreakdown } from "@/lib/domains/match/presentation"
+import { findMatchesByUserId } from "@/lib/domains/match/repository"
+import { findActiveResumeByUserId } from "@/lib/domains/resume/repository"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -16,7 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { BatchMatchButton } from "./components"
 
 async function MatchesContent() {
-  const activeResume = await getActiveResume()
+  const session = await requireAuth()
+  const activeResume = await findActiveResumeByUserId(session.user.id)
 
   if (!activeResume) {
     return (
@@ -48,7 +51,11 @@ async function MatchesContent() {
     )
   }
 
-  const matches = await getUserMatches({ limit: 50 })
+  const matches = await findMatchesByUserId({
+    userId: session.user.id,
+    limit: 50,
+    minScore: 0,
+  })
 
   if (matches.length === 0) {
     return (
@@ -206,40 +213,32 @@ async function MatchesContent() {
                       {match.skillMatches && (
                         <div className="flex flex-wrap gap-2 mt-2">
                           {(() => {
-                            try {
-                              const skills =
-                                typeof match.skillMatches === "string"
-                                  ? JSON.parse(match.skillMatches)
-                                  : match.skillMatches
-                              return (
-                                <>
-                                  {skills.matchedSkills
-                                    ?.slice(0, 3)
-                                    .map((skill: string) => (
-                                      <Badge
-                                        key={skill}
-                                        variant="secondary"
-                                        className="text-xs"
-                                      >
-                                        ✓ {skill}
-                                      </Badge>
-                                    ))}
-                                  {skills.missingSkills
-                                    ?.slice(0, 2)
-                                    .map((skill: string) => (
-                                      <Badge
-                                        key={skill}
-                                        variant="outline"
-                                        className="text-xs text-muted-foreground"
-                                      >
-                                        ✗ {skill}
-                                      </Badge>
-                                    ))}
-                                </>
-                              )
-                            } catch {
-                              return null
-                            }
+                            const skills = parseMatchSkillBreakdown(
+                              match.skillMatches
+                            )
+
+                            return (
+                              <>
+                                {skills.matched.slice(0, 3).map((skill: string) => (
+                                  <Badge
+                                    key={skill}
+                                    variant="secondary"
+                                    className="text-xs"
+                                  >
+                                    ✓ {skill}
+                                  </Badge>
+                                ))}
+                                {skills.missing.slice(0, 2).map((skill: string) => (
+                                  <Badge
+                                    key={skill}
+                                    variant="outline"
+                                    className="text-xs text-muted-foreground"
+                                  >
+                                    ✗ {skill}
+                                  </Badge>
+                                ))}
+                              </>
+                            )
                           })()}
                         </div>
                       )}

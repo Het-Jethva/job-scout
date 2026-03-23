@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { safeParseJson } from "@/lib/serialization"
 import {
   type ResumeAnalysis,
   type ExtractedSkill,
@@ -35,13 +36,19 @@ const resumeAnalysisSchema: z.ZodType<ResumeAnalysis> = z.object({
   yearsOfExperience: z.coerce.number().default(0),
 })
 
+const technicalSkillCategories = new Set([
+  "programming",
+  "framework",
+  "database",
+  "cloud",
+  "devops",
+  "tool",
+  "data",
+])
+
 function parseStoredJson(value: unknown): unknown {
   if (typeof value === "string") {
-    try {
-      return JSON.parse(value)
-    } catch {
-      return null
-    }
+    return safeParseJson<unknown>(value, null)
   }
 
   if (value && typeof value === "object") {
@@ -78,6 +85,14 @@ export function parseStoredResumeAnalysis(value: unknown): ResumeAnalysis | null
 
   const result = resumeAnalysisSchema.safeParse(parsed)
   return result.success ? result.data : null
+}
+
+export function isTechnicalSkillCategory(category: string | undefined): boolean {
+  if (!category) {
+    return false
+  }
+
+  return technicalSkillCategories.has(category.toLowerCase())
 }
 
 export async function resolveResumeAnalysis(

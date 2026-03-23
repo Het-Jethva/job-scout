@@ -1,7 +1,13 @@
 import { Suspense } from "react"
 import { requireAuth } from "@/lib/auth-utils"
-import { getUserResumes, getActiveResume } from "@/app/actions/resume-actions"
-import { parseStoredResumeAnalysis } from "@/lib/domains/resume/analysis"
+import {
+  findActiveResumeByUserId,
+  findUserResumesByUserId,
+} from "@/lib/domains/resume/repository"
+import {
+  isTechnicalSkillCategory,
+  parseStoredResumeAnalysis,
+} from "@/lib/domains/resume/analysis"
 import {
   Card,
   CardContent,
@@ -15,11 +21,11 @@ import { Markdown } from "@/components/ui/markdown"
 import { ResumeUploader, ResumeList, ResumePageSkeleton } from "./components"
 
 async function ResumeContent() {
-  await requireAuth()
+  const session = await requireAuth()
 
   const [resumes, activeResume] = await Promise.all([
-    getUserResumes(),
-    getActiveResume(),
+    findUserResumesByUserId(session.user.id),
+    findActiveResumeByUserId(session.user.id),
   ])
 
   const parsedData = parseStoredResumeAnalysis(activeResume?.parsedData)
@@ -70,12 +76,7 @@ async function ResumeContent() {
                     <h4 className="font-medium mb-2">Technical Skills</h4>
                     <div className="flex flex-wrap gap-2">
                       {parsedData.skills
-                        ?.filter(
-                          (s) =>
-                            s.category === "technical" ||
-                            s.category === "tool" ||
-                            s.category === "framework"
-                        )
+                        ?.filter((s) => isTechnicalSkillCategory(s.category))
                         .map((skill) => (
                           <Badge
                             key={skill.name}
@@ -98,12 +99,7 @@ async function ResumeContent() {
                     <h4 className="font-medium mb-2">Other Skills</h4>
                     <div className="flex flex-wrap gap-2">
                       {parsedData.skills
-                        ?.filter(
-                          (s) =>
-                            s.category !== "technical" &&
-                            s.category !== "tool" &&
-                            s.category !== "framework"
-                        )
+                        ?.filter((s) => !isTechnicalSkillCategory(s.category))
                         .map((skill) => (
                           <Badge
                             key={skill.name}
@@ -122,9 +118,9 @@ async function ResumeContent() {
                 value="experience"
                 className="space-y-4"
               >
-                {parsedData.experience?.map((exp, i) => (
+                {parsedData.experience?.map((exp) => (
                   <div
-                    key={i}
+                    key={`${exp.title}-${exp.company}-${exp.duration}`}
                     className="p-4 rounded-lg border"
                   >
                     <div className="flex items-start justify-between">
@@ -164,9 +160,9 @@ async function ResumeContent() {
                 value="education"
                 className="space-y-4"
               >
-                {parsedData.education?.map((edu, i) => (
+                {parsedData.education?.map((edu) => (
                   <div
-                    key={i}
+                    key={`${edu.degree}-${edu.institution}-${edu.year}`}
                     className="p-4 rounded-lg border"
                   >
                     <h4 className="font-medium">{edu.degree}</h4>

@@ -3,6 +3,7 @@ import {
   sanitizeTailoredKeywords,
   sanitizeTailoredResumeText,
 } from "@/lib/services/tailored-resume-sanitizer"
+import { safeParseJson } from "@/lib/serialization"
 
 interface RawTailoredChange {
   section?: unknown
@@ -51,12 +52,8 @@ function parseChanges(value: unknown): unknown[] {
   }
 
   if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
+    const parsed = safeParseJson<unknown>(value, [])
+    return Array.isArray(parsed) ? parsed : []
   }
 
   return []

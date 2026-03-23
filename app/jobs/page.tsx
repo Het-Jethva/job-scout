@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import Link from "next/link"
-import { getJobs } from "@/app/actions/job-actions"
+import { listJobs } from "@/lib/domains/job/repository"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -33,7 +33,7 @@ async function JobsList({
   const isRemote = params.remote === "true" ? true : undefined
   const search = params.search
 
-  const { jobs, pagination } = await getJobs({
+  const { jobs, pagination } = await listJobs({
     page,
     limit: 20,
     category,

@@ -3,7 +3,6 @@ import {
   tailorResume,
   type ResumeChange,
 } from "@/lib/services/openrouter"
-import type { Prisma } from "@prisma/client"
 import { resolveResumeAnalysis } from "@/lib/domains/resume/analysis"
 import {
   findActiveResumeByUserId,
@@ -17,6 +16,7 @@ import {
   findTailoredResumeWithOwner,
   upsertTailoredResume,
 } from "@/lib/domains/tailor/repository"
+import { toPrismaJsonValue } from "@/lib/serialization"
 
 export interface TailoredResumePayload {
   id: string
@@ -25,10 +25,6 @@ export interface TailoredResumePayload {
   keywords: string[]
   atsScore: number
   summary: string
-}
-
-function toSerializableJson(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
 function dedupeSkills(skills: string[]): string[] {
@@ -75,7 +71,7 @@ export async function tailorResumeForJobUseCase(input: {
     resumeId: activeResume.id,
     jobId: job.id,
     optimizedText: tailored.optimizedText,
-    changes: toSerializableJson(tailored.changes),
+    changes: toPrismaJsonValue(tailored.changes),
     keywords: tailored.addedKeywords,
     atsScore: tailored.atsScore,
   })

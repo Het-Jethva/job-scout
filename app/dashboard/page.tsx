@@ -1,5 +1,5 @@
 import { requireAuth } from "@/lib/auth-utils"
-import { db } from "@/lib/db"
+import { getDashboardData } from "@/lib/domains/dashboard/queries"
 import {
   DashboardHeader,
   StatCard,
@@ -7,58 +7,6 @@ import {
   MatchesCard,
   RecentJobsCard,
 } from "./components"
-
-async function getDashboardData(userId: string) {
-  const [resume, matches, recentJobs] = await Promise.all([
-    db.resume.findFirst({
-      where: { userId, isActive: true },
-      select: {
-        id: true,
-        fileName: true,
-        skills: true,
-        createdAt: true,
-      },
-    }),
-    db.match.findMany({
-      where: { userId },
-      orderBy: { score: "desc" },
-      take: 5,
-      include: {
-        job: {
-          select: {
-            id: true,
-            title: true,
-            company: true,
-            location: true,
-            isRemote: true,
-          },
-        },
-      },
-    }),
-    db.job.findMany({
-      where: { isActive: true },
-      orderBy: { publishedAt: "desc" },
-      take: 5,
-      select: {
-        id: true,
-        title: true,
-        company: true,
-        location: true,
-        isRemote: true,
-        publishedAt: true,
-      },
-    }),
-  ])
-
-  type MatchType = (typeof matches)[number]
-  type JobType = (typeof recentJobs)[number]
-
-  return {
-    resume,
-    matches: matches as MatchType[],
-    recentJobs: recentJobs as JobType[],
-  }
-}
 
 export default async function DashboardPage() {
   const session = await requireAuth()

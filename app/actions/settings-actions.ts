@@ -1,8 +1,15 @@
 "use server"
 
-import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth-utils"
-import { db } from "@/lib/db"
+import {
+  deleteUserById,
+  updateUserProfileById,
+  upsertUserPreferences,
+} from "@/lib/domains/user/repository"
+import {
+  getValidationErrorMessage,
+  revalidatePaths,
+} from "@/lib/action-utils"
 import { profileUpdateSchema, userPreferencesSchema } from "@/lib/validations"
 import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
 
@@ -13,19 +20,18 @@ export async function updateProfile(data: { name: string }) {
   // Validate input
   const validation = profileUpdateSchema.safeParse(data)
   if (!validation.success) {
-    return { success: false, error: validation.error.issues[0]?.message || "Invalid input" }
+    return {
+      success: false,
+      error: getValidationErrorMessage(validation.error),
+    }
   }
 
   try {
     const session = await requireAuth()
 
-    await db.user.update({
-      where: { id: session.user.id },
-      data: { name: validation.data.name },
-    })
+    await updateUserProfileById(session.user.id, validation.data.name)
 
-    revalidatePath("/settings")
-    revalidatePath("/dashboard")
+    revalidatePaths(["/settings", "/dashboard"])
 
     return { success: true }
   } catch {
@@ -52,34 +58,25 @@ export async function updatePreferences(data: {
     remoteOnly: data.remoteOnly,
   })
   if (!validation.success) {
-    return { success: false, error: validation.error.issues[0]?.message || "Invalid input" }
+    return {
+      success: false,
+      error: getValidationErrorMessage(validation.error),
+    }
   }
 
   try {
     const session = await requireAuth()
 
-    await db.userPreference.upsert({
-      where: { userId: session.user.id },
-      create: {
-        userId: session.user.id,
-        preferredJobTypes: data.preferredJobTypes,
-        preferredLocations: data.preferredLocations,
-        salaryMin: data.minSalary,
-        salaryMax: data.maxSalary,
-        remoteOnly: data.remoteOnly,
-      },
-      update: {
-        preferredJobTypes: data.preferredJobTypes,
-        preferredLocations: data.preferredLocations,
-        salaryMin: data.minSalary,
-        salaryMax: data.maxSalary,
-        remoteOnly: data.remoteOnly,
-      },
+    await upsertUserPreferences({
+      userId: session.user.id,
+      preferredJobTypes: data.preferredJobTypes,
+      preferredLocations: data.preferredLocations,
+      salaryMin: data.minSalary,
+      salaryMax: data.maxSalary,
+      remoteOnly: data.remoteOnly,
     })
 
-    revalidatePath("/settings")
-    revalidatePath("/jobs")
-    revalidatePath("/matches")
+    revalidatePaths(["/settings", "/jobs", "/matches"])
 
     return { success: true }
   } catch {
@@ -100,10 +97,7 @@ export async function deleteAccount() {
       return rateLimitError(rateLimitResult)
     }
 
-    // Delete user (cascade will handle related records)
-    await db.user.delete({
-      where: { id: session.user.id },
-    })
+    await deleteUserById(session.user.id)
 
     return { success: true }
   } catch {

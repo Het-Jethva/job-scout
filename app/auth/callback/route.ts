@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
+import { syncAuthUser } from "@/lib/domains/user/repository"
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -12,28 +12,7 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error && data.user) {
-      // Sync user to our database
-      await db.user.upsert({
-        where: { id: data.user.id },
-        update: {
-          email: data.user.email ?? "",
-          name:
-            data.user.user_metadata?.name ?? data.user.user_metadata?.full_name,
-          image:
-            data.user.user_metadata?.avatar_url ??
-            data.user.user_metadata?.picture,
-        },
-        create: {
-          id: data.user.id,
-          email: data.user.email ?? "",
-          name:
-            data.user.user_metadata?.name ?? data.user.user_metadata?.full_name,
-          image:
-            data.user.user_metadata?.avatar_url ??
-            data.user.user_metadata?.picture,
-          emailVerified: !!data.user.email_confirmed_at,
-        },
-      })
+      await syncAuthUser(data.user)
 
       const forwardedHost = request.headers.get("x-forwarded-host")
       const isLocalEnv = process.env.NODE_ENV === "development"

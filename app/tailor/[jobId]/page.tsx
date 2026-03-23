@@ -1,11 +1,12 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
-import { getJob } from "@/app/actions/job-actions"
-import { getActiveResume } from "@/app/actions/resume-actions"
-import { getTailoredResume } from "@/app/actions/tailor-actions"
+import { requireAuth } from "@/lib/auth-utils"
+import { findJobById } from "@/lib/domains/job/repository"
 import { parseStoredResumeAnalysis } from "@/lib/domains/resume/analysis"
+import { findActiveResumeByUserId } from "@/lib/domains/resume/repository"
 import { mapTailoredResumeToContent } from "@/lib/domains/tailor/presentation"
+import { getTailoredResumeForJobUseCase } from "@/lib/domains/tailor/service"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -27,19 +28,23 @@ interface TailorPageProps {
 }
 
 async function TailorContent({ jobId }: { jobId: string }) {
-  const job = await getJob(jobId)
+  const job = await findJobById(jobId)
 
   if (!job) {
     notFound()
   }
 
-  const activeResume = await getActiveResume()
+  const session = await requireAuth()
+  const activeResume = await findActiveResumeByUserId(session.user.id)
 
   if (!activeResume) {
     redirect("/resume?message=upload-first")
   }
 
-  const existingTailored = await getTailoredResume(jobId)
+  const existingTailored = await getTailoredResumeForJobUseCase({
+    userId: session.user.id,
+    jobId,
+  })
 
   const originalAnalysis = parseStoredResumeAnalysis(activeResume.parsedData)
 
@@ -362,9 +367,9 @@ async function TailorContent({ jobId }: { jobId: string }) {
                     >
                       <div className="space-y-4">
                         {tailoredContent.experience.length > 0 ? (
-                          tailoredContent.experience.map((exp, i) => (
+                          tailoredContent.experience.map((exp) => (
                             <div
-                              key={i}
+                              key={`${exp.title}-${exp.company}`}
                               className="p-4 bg-muted rounded-lg"
                             >
                               <h4 className="font-medium">{exp.title}</h4>
@@ -390,9 +395,9 @@ async function TailorContent({ jobId }: { jobId: string }) {
                     >
                       <div className="space-y-4">
                         {tailoredContent.changes.length > 0 ? (
-                          tailoredContent.changes.map((change, i) => (
+                          tailoredContent.changes.map((change) => (
                             <div
-                              key={i}
+                              key={`${change.section}-${change.tailored}`}
                               className="border rounded-lg overflow-hidden"
                             >
                               <div className="bg-muted px-4 py-2 border-b">

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { requireAuth } from "@/lib/auth-utils"
-import { db } from "@/lib/db"
+import { findUserSettingsById } from "@/lib/domains/user/repository"
 import {
   Card,
   CardContent,
@@ -18,13 +18,7 @@ export default async function SettingsPage() {
     redirect("/sign-in?callbackUrl=/settings")
   }
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    include: {
-      userPreferences: true,
-      userSkills: true,
-    },
-  })
+  const user = await findUserSettingsById(session.user.id)
 
   if (!user) {
     redirect("/sign-in")
