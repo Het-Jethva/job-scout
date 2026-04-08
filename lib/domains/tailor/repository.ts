@@ -11,6 +11,7 @@ export async function upsertTailoredResume(input: {
   resumeId: string
   jobId: string
   optimizedText: string
+  structuredContent?: Prisma.InputJsonValue
   changes: Prisma.InputJsonValue
   keywords: string[]
   atsScore: number
@@ -24,6 +25,7 @@ export async function upsertTailoredResume(input: {
     },
     update: {
       optimizedText: input.optimizedText,
+      structuredContent: input.structuredContent,
       changes: input.changes,
       keywords: input.keywords,
       atsScore: input.atsScore,
@@ -32,6 +34,7 @@ export async function upsertTailoredResume(input: {
       resumeId: input.resumeId,
       jobId: input.jobId,
       optimizedText: input.optimizedText,
+      structuredContent: input.structuredContent,
       changes: input.changes,
       keywords: input.keywords,
       atsScore: input.atsScore,

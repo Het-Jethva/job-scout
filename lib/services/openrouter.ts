@@ -648,6 +648,12 @@ export interface TailoredResumeResult {
   addedKeywords: string[]
   atsScore: number
   summary: string
+  prioritizedSkills?: string[]
+  experience?: Array<{
+    title: string
+    company: string
+    description: string
+  }>
 }
 
 function clampAtsScore(value: number): number {
@@ -686,6 +692,27 @@ function sanitizeTailoredResumeResult(
     summary:
       sanitizeTailoredInlineText(result.summary || "") ||
       "Optimized resume content while preserving factual accuracy.",
+    prioritizedSkills: Array.isArray(result.prioritizedSkills)
+      ? sanitizeTailoredKeywords(
+          result.prioritizedSkills.filter(
+            (skill): skill is string => typeof skill === "string"
+          )
+        )
+      : [],
+    experience: Array.isArray(result.experience)
+      ? result.experience
+          .filter(
+            (item): item is { title: string; company: string; description: string } =>
+              !!item && typeof item === "object"
+          )
+          .map((item) => ({
+            title: sanitizeTailoredInlineText(item.title || "") || "Role",
+            company: sanitizeTailoredInlineText(item.company || "") || "Company",
+            description:
+              sanitizeTailoredResumeText(item.description || "") ||
+              "Tailored experience details",
+          }))
+      : [],
   }
 }
 
@@ -738,6 +765,8 @@ Respond with a JSON object containing:
 - addedKeywords: array of keywords emphasized
 - atsScore: estimated ATS score 0-100
 - summary: summary of optimizations made
+- prioritizedSkills: ordered list of the most relevant existing skills to highlight for this role
+- experience: array of {title, company, description} for the 2-4 most relevant experience entries rewritten with the tailored emphasis
 
 Respond with valid JSON only.`
 

@@ -2,25 +2,28 @@ import {
   analyzeATSCompatibility,
   tailorResume,
   type ResumeChange,
+  type TailoredResumeResult,
 } from "@/lib/services/openrouter"
 import type { Prisma } from "@prisma/client"
 import { resolveResumeAnalysis } from "@/lib/domains/resume/analysis"
+import type { TailoredStructuredContent } from "@/lib/domains/tailor/presentation"
 import {
   findActiveResumeByUserId,
   findActiveResumeIdByUserId,
 } from "@/lib/domains/resume/repository"
 import {
   deleteTailoredResumeById,
-  findJobById,
   findTailoredResumeByResumeAndJob,
   findTailoredResumesByResumeId,
   findTailoredResumeWithOwner,
   upsertTailoredResume,
 } from "@/lib/domains/tailor/repository"
+import { ensureJobDetails } from "@/lib/domains/jobs/service"
 
 export interface TailoredResumePayload {
   id: string
   optimizedText: string
+  structuredContent: TailoredStructuredContent
   changes: ResumeChange[]
   keywords: string[]
   atsScore: number
@@ -38,6 +41,28 @@ function dedupeSkills(skills: string[]): string[] {
   return [...unique]
 }
 
+function buildStructuredContent(
+  tailored: TailoredResumeResult,
+  resumeAnalysis: Awaited<ReturnType<typeof resolveResumeAnalysis>>
+): TailoredStructuredContent {
+  return {
+    summary: tailored.summary,
+    skills: dedupeSkills([
+      ...(tailored.prioritizedSkills || []),
+      ...tailored.addedKeywords,
+      ...resumeAnalysis.skills.map((skill) => skill.name),
+    ]).slice(0, 12),
+    experience:
+      tailored.experience && tailored.experience.length > 0
+        ? tailored.experience
+        : resumeAnalysis.experience.map((experience) => ({
+            title: experience.title,
+            company: experience.company,
+            description: experience.responsibilities.join("\n"),
+          })),
+  }
+}
+
 export async function tailorResumeForJobUseCase(input: {
   userId: string
   jobId: string
@@ -47,7 +72,7 @@ export async function tailorResumeForJobUseCase(input: {
     throw new Error("No active resume found")
   }
 
-  const job = await findJobById(input.jobId)
+  const job = await ensureJobDetails(input.jobId)
   if (!job) {
     throw new Error("Job not found")
   }
@@ -71,10 +96,13 @@ export async function tailorResumeForJobUseCase(input: {
     requiredSkills
   )
 
+  const structuredContent = buildStructuredContent(tailored, resumeAnalysis)
+
   const persistedTailoredResume = await upsertTailoredResume({
     resumeId: activeResume.id,
     jobId: job.id,
     optimizedText: tailored.optimizedText,
+    structuredContent: toSerializableJson(structuredContent),
     changes: toSerializableJson(tailored.changes),
     keywords: tailored.addedKeywords,
     atsScore: tailored.atsScore,
@@ -83,6 +111,7 @@ export async function tailorResumeForJobUseCase(input: {
   return {
     id: persistedTailoredResume.id,
     optimizedText: tailored.optimizedText,
+    structuredContent,
     changes: tailored.changes,
     keywords: tailored.addedKeywords,
     atsScore: tailored.atsScore,

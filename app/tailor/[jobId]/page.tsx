@@ -55,11 +55,12 @@ async function TailorContent({ jobId }: { jobId: string }) {
   }
 
   const tailoredContent = existingTailored
-    ? mapTailoredResumeToContent({
-        optimizedText: existingTailored.optimizedText,
-        changes: existingTailored.changes,
-        keywords: existingTailored.keywords,
-        atsScore: existingTailored.atsScore,
+      ? mapTailoredResumeToContent({
+          optimizedText: existingTailored.optimizedText,
+          structuredContent: existingTailored.structuredContent,
+          changes: existingTailored.changes,
+          keywords: existingTailored.keywords,
+          atsScore: existingTailored.atsScore,
       })
     : {
         summary: "",

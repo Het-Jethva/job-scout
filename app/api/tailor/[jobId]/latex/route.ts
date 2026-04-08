@@ -60,6 +60,7 @@ export async function GET(request: Request, context: RouteContext) {
 
     const tailoredContent = mapTailoredResumeToContent({
       optimizedText: tailoredResume.optimizedText,
+      structuredContent: tailoredResume.structuredContent,
       changes: tailoredResume.changes,
       keywords: tailoredResume.keywords,
       atsScore: tailoredResume.atsScore,

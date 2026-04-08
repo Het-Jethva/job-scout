@@ -19,6 +19,12 @@ export interface TailoredChangeView {
   reason: string
 }
 
+export interface TailoredStructuredContent {
+  summary: string
+  skills: string[]
+  experience: Array<{ title: string; company: string; description: string }>
+}
+
 export interface TailoredContentView {
   summary: string
   skills: string[]
@@ -62,6 +68,43 @@ function parseChanges(value: unknown): unknown[] {
   return []
 }
 
+function parseStructuredContent(value: unknown): TailoredStructuredContent | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const candidate = value as Record<string, unknown>
+  const skills = Array.isArray(candidate.skills)
+    ? sanitizeTailoredKeywords(
+        candidate.skills.filter((skill): skill is string => typeof skill === "string")
+      )
+    : []
+
+  const experience = Array.isArray(candidate.experience)
+    ? candidate.experience
+        .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+        .map((item) => ({
+          title: sanitizeTailoredInlineText(toStringValue(item.title)) || "Role",
+          company: sanitizeTailoredInlineText(toStringValue(item.company)) || "Company",
+          description:
+            sanitizeTailoredResumeText(toStringValue(item.description)) ||
+            "Tailored experience details",
+        }))
+    : []
+
+  const summary = sanitizeTailoredResumeText(toStringValue(candidate.summary))
+
+  if (!summary && skills.length === 0 && experience.length === 0) {
+    return null
+  }
+
+  return {
+    summary,
+    skills,
+    experience,
+  }
+}
+
 function mapTailoredChange(rawChange: unknown): TailoredChangeView | null {
   if (!rawChange || typeof rawChange !== "object") {
     return null
@@ -87,10 +130,12 @@ function mapTailoredChange(rawChange: unknown): TailoredChangeView | null {
 
 export function mapTailoredResumeToContent(input: {
   optimizedText: string
+  structuredContent?: unknown
   changes: unknown
   keywords: unknown
   atsScore: number | null
 }): TailoredContentView {
+  const structuredContent = parseStructuredContent(input.structuredContent)
   const cleanedSummary = sanitizeTailoredResumeText(input.optimizedText)
   const keywords = normalizeKeywords(input.keywords)
   const changes = parseChanges(input.changes)
@@ -98,9 +143,14 @@ export function mapTailoredResumeToContent(input: {
     .filter((change): change is TailoredChangeView => change !== null)
 
   return {
-    summary: cleanedSummary || toStringValue(input.optimizedText).trim(),
-    skills: keywords,
-    experience: [],
+    summary:
+      structuredContent?.summary ||
+      cleanedSummary ||
+      toStringValue(input.optimizedText).trim(),
+    skills: structuredContent?.skills.length
+      ? structuredContent.skills
+      : keywords,
+    experience: structuredContent?.experience ?? [],
     changes,
     atsScore: input.atsScore ?? undefined,
     keywords,

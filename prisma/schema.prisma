@@ -162,6 +162,7 @@ model TailoredResume {
   resumeId        String
   jobId           String
   optimizedText   String   @db.Text
+  structuredContent Json?
   changes         Json     // List of modifications made
   keywords        String[] // Keywords optimized for
   atsScore        Int?     // ATS compatibility score 0-100
