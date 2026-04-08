@@ -4,7 +4,7 @@
  */
 
 import { headers } from "next/headers"
-import { env } from "./env"
+import { publicEnv } from "@/lib/config/public-env"
 import {
     checkRateLimit,
     rateLimitError,
@@ -44,13 +44,13 @@ export async function validateOrigin(): Promise<boolean> {
         const referer = headersList.get("referer")
 
         // In development, allow localhost origins
-        if (env.NODE_ENV === "development") {
+        if (publicEnv.NODE_ENV === "development") {
             if (!origin && !referer) return true
             if (origin?.includes("localhost")) return true
             if (referer?.includes("localhost")) return true
         }
 
-        const appUrl = new URL(env.NEXT_PUBLIC_APP_URL)
+        const appUrl = new URL(publicEnv.NEXT_PUBLIC_APP_URL)
         const allowedOrigins = [appUrl.origin]
 
         // Check origin header (primary)
@@ -126,7 +126,7 @@ export async function withErrorHandling<T>(
             error instanceof Error ? error.message : "An unexpected error occurred"
 
         // Sanitize error message for production
-        if (env.NODE_ENV === "production") {
+        if (publicEnv.NODE_ENV === "production") {
             // Don't expose internal error details
             if (
                 message.includes("prisma") ||

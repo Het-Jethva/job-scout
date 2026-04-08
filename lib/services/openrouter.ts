@@ -3,7 +3,8 @@
  * Uses OpenRouter API with free models for AI features
  */
 
-import { env } from "../env"
+import { publicEnv } from "@/lib/config/public-env"
+import { getAiEnv } from "@/lib/config/server-env"
 import {
   sanitizeTailoredInlineText,
   sanitizeTailoredKeywords,
@@ -100,7 +101,7 @@ async function callOpenRouter(
     circuitBreaker.failures = 0
   }
 
-  const apiKey = env.OPENROUTER_API_KEY
+  const { OPENROUTER_API_KEY: apiKey } = getAiEnv()
   const API_TIMEOUT_MS = 30000 // 30 seconds
 
   let lastError: Error | null = null
@@ -122,7 +123,7 @@ async function callOpenRouter(
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": env.NEXT_PUBLIC_APP_URL,
+          "HTTP-Referer": publicEnv.NEXT_PUBLIC_APP_URL,
           "X-Title": "Job Scout",
         },
         body: JSON.stringify({

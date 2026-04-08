@@ -1,6 +1,7 @@
 "use client"
 
 import { createClient } from "@/lib/supabase/client"
+import { publicEnv } from "@/lib/config/public-env"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import type { User, Session } from "@supabase/supabase-js"
@@ -35,6 +36,7 @@ export async function signUpWithEmail(
     email,
     password,
     options: {
+      emailRedirectTo: `${publicEnv.NEXT_PUBLIC_APP_URL}/auth/callback`,
       data: {
         name,
         full_name: name,

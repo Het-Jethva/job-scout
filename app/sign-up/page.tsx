@@ -30,10 +30,12 @@ export default function SignUpPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [shakeError, setShakeError] = useState(false)
+  const [requiresConfirmation, setRequiresConfirmation] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setRequiresConfirmation(false)
 
     if (password !== confirmPassword) {
       setError("Passwords do not match")
@@ -63,8 +65,12 @@ export default function SignUpPage() {
         setShakeError(true)
         setTimeout(() => setShakeError(false), 500)
       } else {
-        router.push("/dashboard")
-        router.refresh()
+        if (result.data?.session) {
+          router.push("/dashboard")
+          router.refresh()
+        } else {
+          setRequiresConfirmation(true)
+        }
       }
     } catch {
       setError("An unexpected error occurred")
@@ -106,6 +112,19 @@ export default function SignUpPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <AnimatePresence>
+                {requiresConfirmation && !error ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                  >
+                    <Alert>
+                      <AlertDescription>
+                        Check your email to confirm your account, then return to sign in.
+                      </AlertDescription>
+                    </Alert>
+                  </motion.div>
+                ) : null}
                 {error && (
                   <Shake trigger={shakeError}>
                     <motion.div

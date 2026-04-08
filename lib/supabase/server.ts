@@ -1,13 +1,15 @@
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
-import { env } from "@/lib/env"
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { publicEnv } from "@/lib/config/public-env"
+import { getSupabaseAdminEnv } from "@/lib/config/server-env"
 
 export async function createClient() {
   const cookieStore = await cookies()
 
   return createServerClient(
-    env.NEXT_PUBLIC_SUPABASE_URL,
-    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    publicEnv.NEXT_PUBLIC_SUPABASE_URL,
+    publicEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll() {
@@ -34,25 +36,15 @@ export async function createClient() {
  * Use this only in server-side code where you need to bypass RLS.
  */
 export async function createServiceClient() {
-  const cookieStore = await cookies()
+  const { SUPABASE_SERVICE_ROLE_KEY } = getSupabaseAdminEnv()
 
-  return createServerClient(
-    env.NEXT_PUBLIC_SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY,
+  return createSupabaseClient(
+    publicEnv.NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
     {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {
-            // Ignore errors from Server Components
-          }
-        },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
       },
     }
   )

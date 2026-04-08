@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client"
 import { Pool } from "pg"
 import { PrismaPg } from "@prisma/adapter-pg"
+import { getDatabaseEnv } from "@/lib/config/server-env"
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -8,16 +9,12 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL
-
-  if (!connectionString) {
-    throw new Error("DATABASE_URL environment variable is not set")
-  }
+  const { DATABASE_URL } = getDatabaseEnv()
 
   // Reuse existing pool in production to avoid connection churn
   if (!globalForPrisma.pool) {
     globalForPrisma.pool = new Pool({
-      connectionString,
+      connectionString: DATABASE_URL,
       // SSL configuration for Supabase/production
       ssl: process.env.NODE_ENV === "production"
         ? { rejectUnauthorized: false }
