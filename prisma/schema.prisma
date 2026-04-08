@@ -71,6 +71,7 @@ model Resume {
   userId          String   @db.Uuid
   fileName        String
   fileUrl         String
+  storagePath     String?
   fileType        String   // pdf, docx, txt
   fileSize        Int
   rawText         String   @db.Text

@@ -8,9 +8,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { uploadResumeClient } from "@/lib/supabase/storage-client"
-import { processResumeUpload } from "@/app/actions/resume-actions"
-import { useSession } from "@/lib/auth-client"
+import { uploadResume } from "@/app/actions/resume-actions"
 import {
   FadeIn,
   StaggerContainer,
@@ -35,7 +33,6 @@ interface ResumeUploaderProps {
 
 export function ResumeUploader({ onUploadComplete }: ResumeUploaderProps) {
   const router = useRouter()
-  const { data: session } = useSession()
   const [uploadProgress, setUploadProgress] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
   const [processing, setProcessing] = useState(false)
@@ -45,11 +42,6 @@ export function ResumeUploader({ onUploadComplete }: ResumeUploaderProps) {
     async (acceptedFiles: File[]) => {
       const file = acceptedFiles[0]
       if (!file) return
-
-      if (!session?.user?.id) {
-        toast.error("Please sign in to upload a resume")
-        return
-      }
 
       // Validate file type
       const validTypes = [
@@ -72,30 +64,20 @@ export function ResumeUploader({ onUploadComplete }: ResumeUploaderProps) {
       setUploadProgress(20)
 
       try {
-        // Upload to Supabase Storage
-        const uploadResult = await uploadResumeClient(session.user.id, file)
-
-        if ("error" in uploadResult) {
-          toast.error(uploadResult.error)
-          setIsUploading(false)
-          setUploadProgress(0)
-          return
-        }
-
-        setUploadProgress(60)
+        setUploadProgress(35)
         setIsUploading(false)
         setProcessing(true)
+        setUploadProgress(70)
 
         toast.info("Processing your resume with AI...")
 
-        const result = await processResumeUpload(
-          uploadResult.url,
-          file.name,
-          file.type,
-          file.size
-        )
+        const formData = new FormData()
+        formData.set("file", file)
+
+        const result = await uploadResume(formData)
 
         if (result.success) {
+          setUploadProgress(100)
           setSuccess(true)
           toast.success("Resume uploaded and processed successfully!")
           setTimeout(() => {
@@ -114,7 +96,7 @@ export function ResumeUploader({ onUploadComplete }: ResumeUploaderProps) {
         setIsUploading(false)
       }
     },
-    [session, router, onUploadComplete]
+    [router, onUploadComplete]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

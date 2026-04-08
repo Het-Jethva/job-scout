@@ -2,9 +2,14 @@
 
 import { db } from "@/lib/db"
 import { requireAuth } from "@/lib/auth-utils"
-import { parseDocument } from "@/lib/services/document-parser"
-import { extractResumeData, generateEmbedding } from "@/lib/services/openrouter"
-import { resumeUploadSchema, resumeIdSchema, skillIdSchema, skillsArraySchema, safeValidate } from "@/lib/validations"
+import {
+  activateResume,
+  getActiveResume as getActiveResumeForUser,
+  getUserResumes as getUserResumesForUser,
+  removeResume,
+  uploadResumeForUser,
+} from "@/lib/domains/resume/service"
+import { resumeIdSchema, skillIdSchema, skillsArraySchema } from "@/lib/validations"
 import { revalidatePath } from "next/cache"
 import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
 
@@ -15,25 +20,13 @@ export interface UploadResumeResult {
 }
 
 /**
- * Process uploaded resume - parse, extract skills, generate embedding
+ * Upload and process a resume from a browser file upload
  */
-export async function processResumeUpload(
-  fileUrl: string,
-  fileName: string,
-  fileType: string,
-  fileSize: number
-): Promise<UploadResumeResult> {
+export async function uploadResume(formData: FormData): Promise<UploadResumeResult> {
   try {
-    // Validate input
-    const validation = safeValidate(resumeUploadSchema, {
-      fileUrl,
-      fileName,
-      fileType,
-      fileSize,
-    })
-
-    if (!validation.success) {
-      return { success: false, error: validation.error }
+    const file = formData.get("file")
+    if (!(file instanceof File)) {
+      return { success: false, error: "Please choose a resume file to upload" }
     }
 
     const session = await requireAuth()
@@ -45,82 +38,7 @@ export async function processResumeUpload(
       return rateLimitError(rateLimitResult)
     }
 
-    const parsedUrl = new URL(fileUrl)
-
-    // Allow Supabase Storage URLs and legacy UploadThing URLs
-    const isSupabaseStorage = parsedUrl.hostname.includes("supabase")
-    const isUploadThing =
-      parsedUrl.hostname.endsWith(".utfs.io") ||
-      parsedUrl.hostname.includes("uploadthing")
-
-    if (!isSupabaseStorage && !isUploadThing) {
-      return { success: false, error: "Invalid resume file location" }
-    }
-
-    // Fetch the file content from trusted upload host only
-    const response = await fetch(parsedUrl, { cache: "no-store" })
-    if (!response.ok) {
-      throw new Error("Failed to fetch uploaded file")
-    }
-
-    const declaredSize = response.headers.get("content-length")
-    if (declaredSize && Math.abs(Number(declaredSize) - fileSize) > 1024) {
-      return { success: false, error: "Resume size mismatch" }
-    }
-
-    const arrayBuffer = await response.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-
-    if (Math.abs(buffer.length - fileSize) > 1024) {
-      return { success: false, error: "Resume size mismatch" }
-    }
-
-    // Parse document
-    const parsed = await parseDocument(buffer, fileType)
-
-    // Extract skills and structured data using AI
-    const analysis = await extractResumeData(parsed.text)
-
-    // Generate embedding for semantic matching
-    const embedding = await generateEmbedding(parsed.text)
-
-    // pgvector expects a bracketed list, not a Postgres array literal
-    const embeddingLiteral = `[${embedding.join(",")}]`
-
-    // Use transaction to prevent race conditions when deactivating/creating resumes
-    const resume = await db.$transaction(async (tx) => {
-      // Deactivate previous resumes
-      await tx.resume.updateMany({
-        where: { userId, isActive: true },
-        data: { isActive: false },
-      })
-
-      // Save to database
-      const newResume = await tx.resume.create({
-        data: {
-          userId,
-          fileName,
-          fileUrl,
-          fileType,
-          fileSize,
-          rawText: parsed.text,
-          parsedData: JSON.parse(JSON.stringify(analysis)),
-          skills: analysis.skills.map((s) => s.name),
-          experience: JSON.parse(JSON.stringify(analysis.experience)),
-          education: JSON.parse(JSON.stringify(analysis.education)),
-          isActive: true,
-        },
-      })
-
-      return newResume
-    })
-
-    // Store embedding using raw SQL (Prisma doesn't directly support vector type)
-    await db.$executeRaw`
-      UPDATE "Resume"
-      SET embedding = ${embeddingLiteral}::vector
-      WHERE id = ${resume.id}
-    `
+    const resume = await uploadResumeForUser(userId, file)
 
     revalidatePath("/resume")
     revalidatePath("/dashboard")
@@ -135,27 +53,16 @@ export async function processResumeUpload(
   }
 }
 
+export async function processResumeUpload(formData: FormData) {
+  return uploadResume(formData)
+}
+
 /**
  * Get user's resumes
  */
 export async function getUserResumes() {
   const session = await requireAuth()
-
-  const resumes = await db.resume.findMany({
-    where: { userId: session.user.id },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      fileName: true,
-      fileUrl: true,
-      fileType: true,
-      skills: true,
-      isActive: true,
-      createdAt: true,
-    },
-  })
-
-  return resumes
+  return getUserResumesForUser(session.user.id)
 }
 
 /**
@@ -163,15 +70,7 @@ export async function getUserResumes() {
  */
 export async function getActiveResume() {
   const session = await requireAuth()
-
-  const resume = await db.resume.findFirst({
-    where: {
-      userId: session.user.id,
-      isActive: true,
-    },
-  })
-
-  return resume
+  return getActiveResumeForUser(session.user.id)
 }
 
 /**
@@ -187,19 +86,18 @@ export async function deleteResume(resumeId: string) {
   const session = await requireAuth()
 
   try {
-    await db.resume.delete({
-      where: {
-        id: resumeId,
-        userId: session.user.id,
-      },
-    })
+    await removeResume(session.user.id, resumeId)
 
     revalidatePath("/resume")
     revalidatePath("/dashboard")
+    revalidatePath("/matches")
 
     return { success: true }
-  } catch {
-    return { success: false, error: "Failed to delete resume" }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to delete resume",
+    }
   }
 }
 
@@ -216,30 +114,18 @@ export async function setActiveResume(resumeId: string) {
   const session = await requireAuth()
 
   try {
-    // Use transaction to prevent race conditions
-    await db.$transaction(async (tx) => {
-      // Deactivate all resumes
-      await tx.resume.updateMany({
-        where: { userId: session.user.id },
-        data: { isActive: false },
-      })
-
-      // Activate the selected one
-      await tx.resume.update({
-        where: {
-          id: resumeId,
-          userId: session.user.id,
-        },
-        data: { isActive: true },
-      })
-    })
+    await activateResume(session.user.id, resumeId)
 
     revalidatePath("/resume")
     revalidatePath("/dashboard")
+    revalidatePath("/matches")
 
     return { success: true }
-  } catch {
-    return { success: false, error: "Failed to set active resume" }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to set active resume",
+    }
   }
 }
 
