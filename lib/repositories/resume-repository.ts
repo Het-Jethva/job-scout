@@ -78,6 +78,16 @@ export async function findActiveResumeByUserId(userId: string) {
   })
 }
 
+export async function findActiveResumeIdByUserId(userId: string) {
+  return db.resume.findFirst({
+    where: {
+      userId,
+      isActive: true,
+    },
+    select: { id: true },
+  })
+}
+
 export async function findResumeByIdForUser(userId: string, resumeId: string) {
   return db.resume.findFirst({
     where: {
@@ -147,4 +157,14 @@ export async function saveResumeEmbedding(resumeId: string, embedding: number[])
     SET embedding = ${embeddingLiteral}::vector
     WHERE id = ${resumeId}
   `
+}
+
+export async function readResumeEmbedding(resumeId: string) {
+  const rows = await db.$queryRaw<Array<{ embedding: string | null }>>`
+    SELECT embedding::text AS embedding
+    FROM "Resume"
+    WHERE id = ${resumeId}
+  `
+
+  return rows[0]?.embedding ?? null
 }

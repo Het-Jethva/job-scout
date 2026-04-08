@@ -208,15 +208,15 @@ async function MatchesContent() {
                           {(() => {
                             try {
                               const skills =
-                                typeof match.skillMatches === "string"
+                               typeof match.skillMatches === "string"
                                   ? JSON.parse(match.skillMatches)
                                   : match.skillMatches
-                              return (
-                                <>
-                                  {skills.matchedSkills
-                                    ?.slice(0, 3)
-                                    .map((skill: string) => (
-                                      <Badge
+                               return (
+                                 <>
+                                   {skills.matched
+                                     ?.slice(0, 3)
+                                     .map((skill: string) => (
+                                       <Badge
                                         key={skill}
                                         variant="secondary"
                                         className="text-xs"
@@ -224,10 +224,10 @@ async function MatchesContent() {
                                         ✓ {skill}
                                       </Badge>
                                     ))}
-                                  {skills.missingSkills
-                                    ?.slice(0, 2)
-                                    .map((skill: string) => (
-                                      <Badge
+                                   {skills.missing
+                                     ?.slice(0, 2)
+                                     .map((skill: string) => (
+                                       <Badge
                                         key={skill}
                                         variant="outline"
                                         className="text-xs text-muted-foreground"

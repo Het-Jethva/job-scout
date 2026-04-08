@@ -268,7 +268,7 @@ async function JobContent({ jobId }: { jobId: string }) {
                           <div className="grid grid-cols-2 gap-2">
                             <div className="text-center p-2 bg-green-50 dark:bg-green-950 rounded">
                               <div className="font-semibold text-green-600 dark:text-green-400">
-                                {skills.matchedSkills?.length || 0}
+                                {skills.matched?.length || 0}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 Matched
@@ -276,7 +276,7 @@ async function JobContent({ jobId }: { jobId: string }) {
                             </div>
                             <div className="text-center p-2 bg-red-50 dark:bg-red-950 rounded">
                               <div className="font-semibold text-red-600 dark:text-red-400">
-                                {skills.missingSkills?.length || 0}
+                                {skills.missing?.length || 0}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 Missing

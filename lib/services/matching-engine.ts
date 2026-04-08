@@ -14,6 +14,11 @@ export interface MatchResult {
   explanation: string
 }
 
+export interface JobRequirementSnapshot {
+  skills: string[]
+  requirements: string[]
+}
+
 export interface SkillMatch {
   matched: string[]
   partial: string[]
@@ -208,13 +213,15 @@ export async function analyzeMatch(
   resumeAnalysis: ResumeAnalysis,
   resumeEmbedding: number[],
   jobDescription: string,
-  jobEmbedding: number[]
+  jobEmbedding: number[],
+  jobRequirementsInput?: JobRequirementSnapshot
 ): Promise<MatchResult> {
   // Calculate semantic similarity
   const similarityScore = cosineSimilarity(resumeEmbedding, jobEmbedding)
 
   // Extract job requirements
-  const jobRequirements = await extractJobRequirements(jobDescription)
+  const jobRequirements = jobRequirementsInput ??
+    await extractJobRequirements(jobDescription)
 
   // Match skills
   const resumeSkillNames = dedupeSkills(

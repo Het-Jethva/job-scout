@@ -1,20 +1,12 @@
-import { db } from "@/lib/db"
+import {
+  findActiveResumeByUserId as findActiveResumeByUserIdFromRepository,
+  findActiveResumeIdByUserId as findActiveResumeIdByUserIdFromRepository,
+} from "@/lib/repositories/resume-repository"
 
 export async function findActiveResumeByUserId(userId: string) {
-  return db.resume.findFirst({
-    where: {
-      userId,
-      isActive: true,
-    },
-  })
+  return findActiveResumeByUserIdFromRepository(userId)
 }
 
 export async function findActiveResumeIdByUserId(userId: string) {
-  return db.resume.findFirst({
-    where: {
-      userId,
-      isActive: true,
-    },
-    select: { id: true },
-  })
+  return findActiveResumeIdByUserIdFromRepository(userId)
 }
