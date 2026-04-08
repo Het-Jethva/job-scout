@@ -5,7 +5,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["unpdf", "pdfkit", "mammoth"],
 
   // Turbopack configuration
-  turbopack: {},
+  turbopack: {
+    root: process.cwd(),
+  },
 
   // Image configuration - restricted to known trusted domains
   images: {
@@ -113,7 +115,7 @@ const nextConfig: NextConfig = {
 
   // Experimental features for better performance
   experimental: {
-    optimizePackageImports: ["lucide-react", "@radix-ui/react-icons"],
+    optimizePackageImports: ["lucide-react"],
   },
 }
 

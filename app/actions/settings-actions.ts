@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/auth-utils"
 import { db } from "@/lib/db"
 import { profileUpdateSchema, userPreferencesSchema } from "@/lib/validations"
 import { RATE_LIMITS, checkRateLimit, rateLimitError } from "@/lib/rate-limit"
+import { deleteUserAccount, updateUserProfile } from "@/lib/domains/settings/service"
 
 /**
  * Update user profile
@@ -19,9 +20,9 @@ export async function updateProfile(data: { name: string }) {
   try {
     const session = await requireAuth()
 
-    await db.user.update({
-      where: { id: session.user.id },
-      data: { name: validation.data.name },
+    await updateUserProfile({
+      userId: session.user.id,
+      name: validation.data.name,
     })
 
     revalidatePath("/settings")
@@ -100,10 +101,7 @@ export async function deleteAccount() {
       return rateLimitError(rateLimitResult)
     }
 
-    // Delete user (cascade will handle related records)
-    await db.user.delete({
-      where: { id: session.user.id },
-    })
+    await deleteUserAccount(session.user.id)
 
     return { success: true }
   } catch {

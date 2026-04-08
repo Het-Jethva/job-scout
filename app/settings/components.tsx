@@ -26,6 +26,7 @@ import {
   deleteAccount,
 } from "@/app/actions/settings-actions"
 import { FadeIn, HoverScale, SuccessCheckmark } from "@/components/ui/motion"
+import { signOut } from "@/lib/auth-client"
 
 interface ProfileFormProps {
   initialData: {
@@ -35,6 +36,7 @@ interface ProfileFormProps {
 }
 
 export function ProfileForm({ initialData }: ProfileFormProps) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [name, setName] = useState(initialData.name)
   const [showSuccess, setShowSuccess] = useState(false)
@@ -47,6 +49,7 @@ export function ProfileForm({ initialData }: ProfileFormProps) {
         setShowSuccess(true)
         setTimeout(() => setShowSuccess(false), 2000)
         toast.success("Profile updated successfully")
+        router.refresh()
       } else {
         toast.error(result.error || "Failed to update profile")
       }
@@ -148,6 +151,7 @@ interface PreferencesFormProps {
 }
 
 export function PreferencesForm({ initialData }: PreferencesFormProps) {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [jobTypes, setJobTypes] = useState<string[]>(
     initialData.preferredJobTypes
@@ -196,6 +200,7 @@ export function PreferencesForm({ initialData }: PreferencesFormProps) {
         setShowSuccess(true)
         setTimeout(() => setShowSuccess(false), 2000)
         toast.success("Preferences updated successfully")
+        router.refresh()
       } else {
         toast.error(result.error || "Failed to update preferences")
       }
@@ -392,8 +397,10 @@ export function DangerZone() {
     startTransition(async () => {
       const result = await deleteAccount()
       if (result.success) {
+        await signOut()
         toast.success("Account deleted successfully")
         router.push("/")
+        router.refresh()
       } else {
         toast.error(result.error || "Failed to delete account")
       }
