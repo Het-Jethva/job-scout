@@ -67,9 +67,10 @@ create trigger on_auth_user_updated
 -- 3. Create storage bucket for resumes
 -- ============================================
 
--- Create the resumes bucket (private by default)
+-- Create the resumes bucket as private. The app uses authenticated access and
+-- service-role uploads rather than public file URLs.
 insert into storage.buckets (id, name, public)
-values ('resumes', 'resumes', true)
+values ('resumes', 'resumes', false)
 on conflict (id) do nothing;
 
 -- ============================================
@@ -102,13 +103,6 @@ using (
   bucket_id = 'resumes' and
   (storage.foldername(name))[1] = auth.uid()::text
 );
-
--- Allow public read access to resumes (for sharing/viewing)
--- Remove this policy if you want resumes to be private
-create policy "Public read access for resumes"
-on storage.objects for select
-to public
-using (bucket_id = 'resumes');
 
 -- ============================================
 -- 5. Vector similarity search function (optional)
