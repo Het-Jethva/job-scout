@@ -160,23 +160,31 @@ function cleanText(text: string): string {
     return ""
   }
 
-  return (
-    text
-      // Remove excessive whitespace
-      .replace(/\s+/g, " ")
-      // Remove special characters that are clearly artifacts
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
-      // Normalize line breaks
-      .replace(/(\r\n|\r|\n)+/g, "\n")
-      // Remove multiple spaces
-      .replace(/[ \t]+/g, " ")
-      // Trim each line
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .join("\n")
-      .trim()
-  )
+  const normalizedLines = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u00a0/g, " ")
+    // Remove control characters while keeping line breaks intact.
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+
+  const compactedLines: string[] = []
+  let previousLineWasBlank = false
+
+  for (const line of normalizedLines) {
+    if (!line) {
+      if (!previousLineWasBlank && compactedLines.length > 0) {
+        compactedLines.push("")
+      }
+      previousLineWasBlank = true
+      continue
+    }
+
+    compactedLines.push(line)
+    previousLineWasBlank = false
+  }
+
+  return compactedLines.join("\n").trim()
 }
 
 /**
