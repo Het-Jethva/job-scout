@@ -4,6 +4,18 @@ import { publicEnv } from "@/lib/config/public-env"
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
+  const pathname = request.nextUrl.pathname
+  const protectedRoutePrefixes = [
+    "/dashboard",
+    "/resume",
+    "/matches",
+    "/settings",
+    "/tailor",
+  ]
+
+  const isProtectedRoute = protectedRoutePrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  )
 
   const applyCacheHeaders = (headers: Record<string, string>) => {
     Object.entries(headers).forEach(([key, value]) => {
@@ -60,11 +72,17 @@ export async function updateSession(request: NextRequest) {
 
   const isAuthenticated = !claimsError && !!claimsData?.claims?.sub
 
+  if (!isAuthenticated && isProtectedRoute) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/sign-in"
+    const callbackPath = `${pathname}${request.nextUrl.search}`
+    url.searchParams.set("callbackUrl", callbackPath)
+    return redirectWithSession(url)
+  }
+
   if (
     isAuthenticated &&
-    (request.nextUrl.pathname === "/" ||
-      request.nextUrl.pathname.startsWith("/sign-in") ||
-      request.nextUrl.pathname.startsWith("/sign-up"))
+    (pathname === "/" || pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up"))
   ) {
     const url = request.nextUrl.clone()
     url.pathname = "/dashboard"

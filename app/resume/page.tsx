@@ -1,6 +1,9 @@
 import { Suspense } from "react"
 import { requireAuth } from "@/lib/auth-utils"
-import { getUserResumes, getActiveResume } from "@/app/actions/resume-actions"
+import {
+  getActiveResume as getActiveResumeForUser,
+  getUserResumes as getUserResumesForUser,
+} from "@/lib/domains/resume/service"
 import { parseStoredResumeAnalysis } from "@/lib/domains/resume/analysis"
 import {
   Card,
@@ -15,11 +18,11 @@ import { Markdown } from "@/components/ui/markdown"
 import { ResumeUploader, ResumeList, ResumePageSkeleton } from "./components"
 
 async function ResumeContent() {
-  await requireAuth()
+  const session = await requireAuth()
 
   const [resumes, activeResume] = await Promise.all([
-    getUserResumes(),
-    getActiveResume(),
+    getUserResumesForUser(session.user.id),
+    getActiveResumeForUser(session.user.id),
   ])
 
   const parsedData = parseStoredResumeAnalysis(activeResume?.parsedData)

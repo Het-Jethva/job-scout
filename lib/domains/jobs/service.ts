@@ -72,15 +72,19 @@ export async function ensureJobDetails(jobId: string) {
     return job
   }
 
-  const analysis = await extractJobRequirements(job.description)
+  try {
+    const analysis = await extractJobRequirements(job.description)
 
-  await updateJobEnrichment({
-    jobId: job.id,
-    skills: dedupe(analysis.skills),
-    requirements: dedupe([...analysis.requirements, ...analysis.niceToHave]),
-  })
+    await updateJobEnrichment({
+      jobId: job.id,
+      skills: dedupe(analysis.skills),
+      requirements: dedupe([...analysis.requirements, ...analysis.niceToHave]),
+    })
 
-  return findJobById(jobId)
+    return findJobById(jobId)
+  } catch {
+    return job
+  }
 }
 
 export async function ensureJobEmbedding(job: {

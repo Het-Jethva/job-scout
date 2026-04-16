@@ -274,7 +274,13 @@ export function ResumeList({ resumes }: ResumeListProps) {
     setLoading(resumeId)
     try {
       const { setActiveResume } = await import("@/app/actions/resume-actions")
-      await setActiveResume(resumeId)
+      const result = await setActiveResume(resumeId)
+
+      if (!result.success) {
+        toast.error(result.error || "Failed to set resume as active")
+        return
+      }
+
       toast.success("Resume set as active")
       router.refresh()
     } catch {
@@ -290,7 +296,13 @@ export function ResumeList({ resumes }: ResumeListProps) {
     setLoading(resumeId)
     try {
       const { deleteResume } = await import("@/app/actions/resume-actions")
-      await deleteResume(resumeId)
+      const result = await deleteResume(resumeId)
+
+      if (!result.success) {
+        toast.error(result.error || "Failed to delete resume")
+        return
+      }
+
       toast.success("Resume deleted")
       router.refresh()
     } catch {

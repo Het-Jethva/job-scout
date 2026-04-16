@@ -1,7 +1,10 @@
 import { Suspense } from "react"
 import Link from "next/link"
-import { getUserMatches } from "@/app/actions/match-actions"
-import { getActiveResume } from "@/app/actions/resume-actions"
+import { requireAuth } from "@/lib/auth-utils"
+import {
+  getActiveResume as getActiveResumeForUser,
+} from "@/lib/domains/resume/service"
+import { getMatchesForActiveResume } from "@/lib/domains/matching/service"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -16,7 +19,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { BatchMatchButton } from "./components"
 
 async function MatchesContent() {
-  const activeResume = await getActiveResume()
+  const session = await requireAuth()
+  const activeResume = await getActiveResumeForUser(session.user.id)
 
   if (!activeResume) {
     return (
@@ -48,7 +52,10 @@ async function MatchesContent() {
     )
   }
 
-  const matches = await getUserMatches({ limit: 50 })
+  const matches = await getMatchesForActiveResume({
+    userId: session.user.id,
+    limit: 50,
+  })
 
   if (matches.length === 0) {
     return (

@@ -293,6 +293,489 @@ export interface ResumeAnalysis {
   yearsOfExperience: number
 }
 
+interface SkillCatalogItem {
+  name: string
+  category: string
+  aliases: string[]
+}
+
+const SKILL_CATALOG: SkillCatalogItem[] = [
+  {
+    name: "TypeScript",
+    category: "programming",
+    aliases: ["typescript"],
+  },
+  {
+    name: "JavaScript",
+    category: "programming",
+    aliases: ["javascript"],
+  },
+  {
+    name: "Python",
+    category: "programming",
+    aliases: ["python"],
+  },
+  {
+    name: "Java",
+    category: "programming",
+    aliases: ["java"],
+  },
+  {
+    name: "C++",
+    category: "programming",
+    aliases: ["c++"],
+  },
+  {
+    name: "C#",
+    category: "programming",
+    aliases: ["c#"],
+  },
+  {
+    name: "Go",
+    category: "programming",
+    aliases: ["golang", "go language"],
+  },
+  {
+    name: "React",
+    category: "framework",
+    aliases: ["react", "react.js", "reactjs"],
+  },
+  {
+    name: "Next.js",
+    category: "framework",
+    aliases: ["next.js", "nextjs"],
+  },
+  {
+    name: "Node.js",
+    category: "framework",
+    aliases: ["node.js", "nodejs"],
+  },
+  {
+    name: "Express",
+    category: "framework",
+    aliases: ["express", "express.js", "expressjs"],
+  },
+  {
+    name: "Django",
+    category: "framework",
+    aliases: ["django"],
+  },
+  {
+    name: "Flask",
+    category: "framework",
+    aliases: ["flask"],
+  },
+  {
+    name: "PostgreSQL",
+    category: "database",
+    aliases: ["postgresql", "postgres"],
+  },
+  {
+    name: "MySQL",
+    category: "database",
+    aliases: ["mysql"],
+  },
+  {
+    name: "MongoDB",
+    category: "database",
+    aliases: ["mongodb", "mongo db"],
+  },
+  {
+    name: "Redis",
+    category: "database",
+    aliases: ["redis"],
+  },
+  {
+    name: "Prisma",
+    category: "tool",
+    aliases: ["prisma"],
+  },
+  {
+    name: "Docker",
+    category: "devops",
+    aliases: ["docker"],
+  },
+  {
+    name: "Kubernetes",
+    category: "devops",
+    aliases: ["kubernetes", "k8s"],
+  },
+  {
+    name: "AWS",
+    category: "cloud",
+    aliases: ["aws", "amazon web services"],
+  },
+  {
+    name: "GCP",
+    category: "cloud",
+    aliases: ["gcp", "google cloud"],
+  },
+  {
+    name: "Azure",
+    category: "cloud",
+    aliases: ["azure", "microsoft azure"],
+  },
+  {
+    name: "Git",
+    category: "tool",
+    aliases: ["git"],
+  },
+  {
+    name: "CI/CD",
+    category: "devops",
+    aliases: ["ci/cd", "continuous integration", "continuous deployment"],
+  },
+  {
+    name: "REST APIs",
+    category: "other",
+    aliases: ["rest api", "restful api", "apis"],
+  },
+  {
+    name: "GraphQL",
+    category: "other",
+    aliases: ["graphql"],
+  },
+]
+
+function normalizeWhitespaceText(value: string): string {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/[ ]+/g, " ")
+}
+
+function dedupeStrings(values: string[]): string[] {
+  const deduped = new Map<string, string>()
+
+  for (const value of values) {
+    const cleaned = value.trim()
+    if (!cleaned) {
+      continue
+    }
+
+    const key = cleaned.toLowerCase()
+    if (!deduped.has(key)) {
+      deduped.set(key, cleaned)
+    }
+  }
+
+  return [...deduped.values()]
+}
+
+function aliasMatchesText(text: string, alias: string): boolean {
+  const normalizedAlias = alias.trim().toLowerCase()
+  if (!normalizedAlias) {
+    return false
+  }
+
+  if (/^[a-z0-9]+$/.test(normalizedAlias)) {
+    const escaped = normalizedAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    return new RegExp(`\\b${escaped}\\b`, "i").test(text)
+  }
+
+  return text.includes(normalizedAlias)
+}
+
+function normalizeSkillKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+#]/g, "")
+    .trim()
+}
+
+function detectSkillsFromText(text: string): ExtractedSkill[] {
+  const normalizedText = normalizeWhitespaceText(text).toLowerCase()
+
+  return SKILL_CATALOG.filter((skill) =>
+    skill.aliases.some((alias) => aliasMatchesText(normalizedText, alias))
+  ).map((skill) => ({
+    name: skill.name,
+    category: skill.category,
+    level: undefined,
+  }))
+}
+
+function extractSectionContent(
+  text: string,
+  headings: string[]
+): string | null {
+  const escapedHeadings = headings.map((heading) =>
+    heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  )
+  const pattern = new RegExp(
+    `(?:^|\\n)(?:${escapedHeadings.join("|")})\\s*\\n([\\s\\S]*?)(?:\\n\\s*\\n|$)`,
+    "i"
+  )
+  const match = pattern.exec(text)
+
+  return match?.[1]?.trim() || null
+}
+
+function extractSummaryFromText(text: string): string {
+  const summarySection = extractSectionContent(text, [
+    "summary",
+    "professional summary",
+    "profile",
+    "objective",
+  ])
+
+  if (summarySection) {
+    return summarySection.split("\n").slice(0, 4).join(" ").trim()
+  }
+
+  const lines = normalizeWhitespaceText(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+  return lines.join(" ").slice(0, 320).trim()
+}
+
+function extractExperienceFromText(text: string): ExtractedExperience[] {
+  const lines = normalizeWhitespaceText(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const experiences: ExtractedExperience[] = []
+  const rolePattern =
+    /^([A-Za-z][A-Za-z0-9/&(),.' -]{1,80})\s*(?:at|@|,|-)+\s*([A-Za-z0-9&(),.' -]{2,80})(?:\s*\(([^)]+)\))?$/i
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const lowered = line.toLowerCase()
+
+    if (
+      lowered === "experience" ||
+      lowered === "work experience" ||
+      lowered === "employment"
+    ) {
+      continue
+    }
+
+    const roleMatch = rolePattern.exec(line)
+    if (!roleMatch) {
+      continue
+    }
+
+    const responsibilities: string[] = []
+    for (let offset = 1; offset <= 5; offset += 1) {
+      const nextLine = lines[index + offset]
+      if (!nextLine) {
+        break
+      }
+
+      if (/^[-*•]/.test(nextLine)) {
+        responsibilities.push(nextLine.replace(/^[-*•]\s*/, "").trim())
+      } else if (rolePattern.test(nextLine)) {
+        break
+      }
+    }
+
+    experiences.push({
+      title: roleMatch[1].trim(),
+      company: roleMatch[2].trim(),
+      duration: roleMatch[3]?.trim() || "",
+      responsibilities: responsibilities.slice(0, 5),
+    })
+
+    if (experiences.length >= 5) {
+      break
+    }
+  }
+
+  return experiences
+}
+
+function extractEducationFromText(text: string): ExtractedEducation[] {
+  const lines = normalizeWhitespaceText(text)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const education: ExtractedEducation[] = []
+
+  for (const line of lines) {
+    if (!/(bachelor|master|phd|degree|university|college|b\.s\.|m\.s\.)/i.test(line)) {
+      continue
+    }
+
+    const yearMatch = /(19|20)\d{2}/.exec(line)
+    const parts = line.split(",").map((part) => part.trim())
+    const degree = parts[0] || "Degree"
+    const institution = parts[1] || parts[0] || "Institution"
+    const fieldMatch = /in\s+([A-Za-z0-9&/ -]{3,60})/i.exec(line)
+
+    education.push({
+      degree,
+      institution,
+      year: yearMatch?.[0] || "",
+      field: fieldMatch?.[1]?.trim() || "",
+    })
+
+    if (education.length >= 4) {
+      break
+    }
+  }
+
+  return education
+}
+
+function estimateYearsOfExperience(
+  text: string,
+  experience: ExtractedExperience[]
+): number {
+  const explicitMatches = Array.from(text.matchAll(/(\d{1,2})\+?\s+years?/gi))
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= 50)
+
+  if (explicitMatches.length > 0) {
+    return Math.max(...explicitMatches)
+  }
+
+  if (experience.length > 0) {
+    return Math.min(30, experience.length * 2)
+  }
+
+  return 0
+}
+
+function createFallbackResumeAnalysis(resumeText: string): ResumeAnalysis {
+  const summary = extractSummaryFromText(resumeText)
+  const skills = detectSkillsFromText(resumeText)
+  const experience = extractExperienceFromText(resumeText)
+  const education = extractEducationFromText(resumeText)
+  const keywords = dedupeStrings(skills.map((skill) => skill.name)).slice(0, 20)
+  const yearsOfExperience = estimateYearsOfExperience(resumeText, experience)
+
+  return {
+    skills,
+    keywords,
+    experience,
+    education,
+    summary,
+    yearsOfExperience,
+  }
+}
+
+function inferExperienceLevel(yearsRequired: number): string {
+  if (yearsRequired >= 12) return "executive"
+  if (yearsRequired >= 8) return "lead"
+  if (yearsRequired >= 5) return "senior"
+  if (yearsRequired >= 2) return "mid"
+  return "entry"
+}
+
+function createFallbackJobRequirements(jobDescription: string): {
+  skills: string[]
+  requirements: string[]
+  niceToHave: string[]
+  experienceLevel: string
+} {
+  const normalized = normalizeWhitespaceText(jobDescription)
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const skills = dedupeStrings(
+    detectSkillsFromText(jobDescription).map((skill) => skill.name)
+  )
+
+  const requirements = dedupeStrings(
+    lines.filter((line) =>
+      /(must|required|minimum|proficient|experience with|strong understanding)/i.test(
+        line
+      )
+    )
+  ).slice(0, 12)
+
+  const niceToHave = dedupeStrings(
+    lines.filter((line) =>
+      /(preferred|nice to have|bonus|plus|good to have)/i.test(line)
+    )
+  ).slice(0, 10)
+
+  const yearsRequiredMatch = /(\d{1,2})\+?\s+years?/i.exec(normalized)
+  const yearsRequired = Number(yearsRequiredMatch?.[1] || "0")
+
+  return {
+    skills,
+    requirements,
+    niceToHave,
+    experienceLevel: inferExperienceLevel(yearsRequired),
+  }
+}
+
+function createFallbackTailoredResumeResult(
+  originalResumeText: string,
+  resumeAnalysis: ResumeAnalysis,
+  jobTitle: string,
+  requiredSkills: string[]
+): TailoredResumeResult {
+  const cleanedOriginal =
+    sanitizeTailoredResumeText(originalResumeText || "") || originalResumeText.trim()
+  const resumeSkills = dedupeStrings(
+    resumeAnalysis.skills.map((skill) => sanitizeTailoredInlineText(skill.name))
+  )
+
+  const requiredSkillSet = new Set(
+    requiredSkills.map((skill) => normalizeSkillKey(skill))
+  )
+
+  const prioritizedSkills = resumeSkills.filter((skill) =>
+    requiredSkillSet.has(normalizeSkillKey(skill))
+  )
+
+  const finalPrioritizedSkills =
+    prioritizedSkills.length > 0 ? prioritizedSkills : resumeSkills
+
+  const addedKeywords = finalPrioritizedSkills.slice(0, 12)
+
+  const summaryBase =
+    sanitizeTailoredInlineText(resumeAnalysis.summary || "") ||
+    "Experienced software professional with proven project delivery."
+
+  const summary = addedKeywords.length > 0
+    ? `${summaryBase} Tailored for ${jobTitle} with emphasis on ${addedKeywords
+        .slice(0, 5)
+        .join(", ")}.`
+    : `${summaryBase} Tailored for ${jobTitle}.`
+
+  let optimizedText = cleanedOriginal
+  if (!optimizedText) {
+    optimizedText = `## Professional Summary\n${summary}`
+  }
+
+  if (addedKeywords.length > 0 && !/##\s*Technical Skills/i.test(optimizedText)) {
+    optimizedText = `${optimizedText}\n\n## Technical Skills\n${addedKeywords
+      .map((keyword) => `- ${keyword}`)
+      .join("\n")}`
+  }
+
+  return {
+    optimizedText,
+    changes: [
+      {
+        section: "Professional Summary",
+        original: sanitizeTailoredResumeText(resumeAnalysis.summary || ""),
+        modified: summary,
+        reason: "Emphasized existing strengths for the target role.",
+      },
+    ],
+    addedKeywords,
+    atsScore: clampAtsScore(70 + Math.min(25, addedKeywords.length * 2)),
+    summary,
+    prioritizedSkills: finalPrioritizedSkills.slice(0, 12),
+    experience: resumeAnalysis.experience.slice(0, 4).map((entry) => ({
+      title: entry.title,
+      company: entry.company,
+      description: entry.responsibilities.join("\n"),
+    })),
+  }
+}
+
 // ============ AI Functions ============
 
 /**
@@ -386,22 +869,10 @@ Provide complete, accurate JSON response only.`
 
     return parseJsonResponse<ResumeAnalysis>(response)
   } catch (error) {
-    console.error("Resume analysis error:", error)
-    const errorMessage =
-      error instanceof Error ? error.message : String(error)
-
-    // Provide more specific error messages
-    if (errorMessage.includes("Rate limit") || errorMessage.includes("429")) {
-      throw new Error("Rate limit exceeded. Please try again later.")
-    }
-    if (errorMessage.includes("API key") || errorMessage.includes("401")) {
-      throw new Error("AI service configuration error. Please contact support.")
-    }
-    if (errorMessage.includes("JSON") || errorMessage.includes("parse")) {
-      throw new Error("Failed to parse AI response. Please try again.")
-    }
-
-    throw new Error(`Failed to analyze resume with AI: ${errorMessage}`)
+    console.warn("Resume analysis fallback engaged", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return createFallbackResumeAnalysis(resumeText)
   }
 }
 
@@ -556,8 +1027,11 @@ Provide complete, accurate JSON response only.`
       yearsRequired?: number
       educationRequired?: string
     }>(response)
-  } catch {
-    throw new Error("Failed to analyze job description")
+  } catch (error) {
+    console.warn("Job requirement extraction fallback engaged", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return createFallbackJobRequirements(jobDescription)
   }
 }
 
@@ -785,15 +1259,17 @@ Respond with valid JSON only.`
       parseJsonResponse<TailoredResumeResult>(response)
     )
   } catch (error) {
-    const message = (error as Error)?.message || "Failed to tailor resume"
-
-    if (message.includes("Rate limit") || message.includes("429")) {
-      throw new Error(
-        "Tailoring temporarily unavailable: Rate limit exceeded. Please try again later."
+    console.warn("Resume tailoring fallback engaged", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return sanitizeTailoredResumeResult(
+      createFallbackTailoredResumeResult(
+        originalResumeText,
+        resumeAnalysis,
+        jobTitle,
+        requiredSkills
       )
-    }
-
-    throw new Error("Failed to tailor resume")
+    )
   }
 }
 

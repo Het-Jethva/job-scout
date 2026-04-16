@@ -1,9 +1,12 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
-import { getJob } from "@/app/actions/job-actions"
-import { getActiveResume } from "@/app/actions/resume-actions"
-import { getTailoredResume } from "@/app/actions/tailor-actions"
+import { requireAuth } from "@/lib/auth-utils"
+import { ensureJobDetails } from "@/lib/domains/jobs/service"
+import {
+  getActiveResume as getActiveResumeForUser,
+} from "@/lib/domains/resume/service"
+import { getTailoredResumeForJobUseCase } from "@/lib/domains/tailor/service"
 import { parseStoredResumeAnalysis } from "@/lib/domains/resume/analysis"
 import { mapTailoredResumeToContent } from "@/lib/domains/tailor/presentation"
 import { Button } from "@/components/ui/button"
@@ -27,19 +30,23 @@ interface TailorPageProps {
 }
 
 async function TailorContent({ jobId }: { jobId: string }) {
-  const job = await getJob(jobId)
+  const session = await requireAuth()
+  const job = await ensureJobDetails(jobId)
 
   if (!job) {
     notFound()
   }
 
-  const activeResume = await getActiveResume()
+  const activeResume = await getActiveResumeForUser(session.user.id)
 
   if (!activeResume) {
     redirect("/resume?message=upload-first")
   }
 
-  const existingTailored = await getTailoredResume(jobId)
+  const existingTailored = await getTailoredResumeForJobUseCase({
+    userId: session.user.id,
+    jobId,
+  })
 
   const originalAnalysis = parseStoredResumeAnalysis(activeResume.parsedData)
 

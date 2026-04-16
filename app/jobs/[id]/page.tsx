@@ -1,9 +1,12 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { getJob } from "@/app/actions/job-actions"
-import { getActiveResume } from "@/app/actions/resume-actions"
-import { getJobMatch } from "@/app/actions/match-actions"
+import { getServerSession } from "@/lib/auth-utils"
+import { ensureJobDetails } from "@/lib/domains/jobs/service"
+import {
+  getActiveResume as getActiveResumeForUser,
+} from "@/lib/domains/resume/service"
+import { getMatchForActiveResume } from "@/lib/domains/matching/service"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -25,14 +28,22 @@ interface JobDetailPageProps {
 }
 
 async function JobContent({ jobId }: { jobId: string }) {
-  const job = await getJob(jobId)
+  const job = await ensureJobDetails(jobId)
 
   if (!job) {
     notFound()
   }
 
-  const activeResume = await getActiveResume()
-  const existingMatch = activeResume ? await getJobMatch(jobId) : null
+  const session = await getServerSession()
+  const [activeResume, existingMatch] = session
+    ? await Promise.all([
+        getActiveResumeForUser(session.user.id),
+        getMatchForActiveResume({
+          userId: session.user.id,
+          jobId,
+        }),
+      ])
+    : [null, null]
 
   // Requirements are stored as String[]
   const requirements = job.requirements || []
