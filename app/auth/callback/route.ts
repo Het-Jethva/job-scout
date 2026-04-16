@@ -1,19 +1,12 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { upsertUserFromAuth } from "@/lib/repositories/user-repository"
-
-function getSafeRedirectPath(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/dashboard"
-  }
-
-  return value
-}
+import { getSafeCallbackPath } from "@/lib/safe-callback"
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get("code")
-  const next = getSafeRedirectPath(searchParams.get("next"))
+  const next = getSafeCallbackPath(searchParams.get("next"))
 
   if (code) {
     const supabase = await createClient()

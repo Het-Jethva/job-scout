@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/client"
 import { publicEnv } from "@/lib/config/public-env"
+import { getSafeCallbackPath } from "@/lib/safe-callback"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import type { User, Session } from "@supabase/supabase-js"
@@ -30,13 +31,17 @@ export async function signInWithEmail(email: string, password: string) {
 export async function signUpWithEmail(
   email: string,
   password: string,
-  name?: string
+  name?: string,
+  callbackPath?: string
 ) {
+  const safeCallbackPath = getSafeCallbackPath(callbackPath)
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: `${publicEnv.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      emailRedirectTo: `${publicEnv.NEXT_PUBLIC_APP_URL}/auth/callback?next=${encodeURIComponent(
+        safeCallbackPath
+      )}`,
       data: {
         name,
         full_name: name,
@@ -129,11 +134,13 @@ export const signUp = {
     email,
     password,
     name,
+    callbackPath,
   }: {
     email: string
     password: string
     name?: string
+    callbackPath?: string
   }) => {
-    return signUpWithEmail(email, password, name)
+    return signUpWithEmail(email, password, name, callbackPath)
   },
 }
