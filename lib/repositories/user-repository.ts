@@ -1,6 +1,7 @@
 import "server-only"
 
 import { db } from "@/lib/db"
+import { Prisma } from "@prisma/client"
 
 export interface AuthenticatedUserRecord {
   id: string
@@ -17,45 +18,39 @@ export async function findUserById(userId: string) {
 }
 
 export async function upsertUserFromAuth(input: AuthenticatedUserRecord) {
-  const existingUser = await db.user.findUnique({
-    where: { id: input.id },
-  })
-
-  if (existingUser) {
-    return db.user.update({
+  try {
+    return await db.user.upsert({
       where: { id: input.id },
-      data: {
+      update: {
+        email: input.email,
+        name: input.name,
+        image: input.image,
+        emailVerified: input.emailVerified,
+      },
+      create: {
+        id: input.id,
         email: input.email,
         name: input.name,
         image: input.image,
         emailVerified: input.emailVerified,
       },
     })
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return db.user.update({
+        where: { email: input.email },
+        data: {
+          id: input.id,
+          name: input.name,
+          image: input.image,
+          emailVerified: input.emailVerified,
+        },
+      })
+    }
+
+    throw error
   }
-
-  const userWithSameEmail = await db.user.findUnique({
-    where: { email: input.email },
-  })
-
-  if (userWithSameEmail) {
-    return db.user.update({
-      where: { email: input.email },
-      data: {
-        id: input.id,
-        name: input.name ?? userWithSameEmail.name,
-        image: input.image ?? userWithSameEmail.image,
-        emailVerified: input.emailVerified,
-      },
-    })
-  }
-
-  return db.user.create({
-    data: {
-      id: input.id,
-      email: input.email,
-      name: input.name,
-      image: input.image,
-      emailVerified: input.emailVerified,
-    },
-  })
 }
